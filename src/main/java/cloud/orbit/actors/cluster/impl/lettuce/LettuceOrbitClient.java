@@ -41,6 +41,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class LettuceOrbitClient
@@ -53,7 +54,8 @@ public class LettuceOrbitClient
     private final StatefulRedisPubSubConnection<String, Object> redisPublishingConnection;
     private final RedisPubSubAsyncCommands<String, Object> redisPublishingAsyncCommands;
 
-    private final AtomicInteger commandCounter = new AtomicInteger();
+    private final AtomicInteger commandCounter = new AtomicInteger(1);
+    private final AtomicBoolean flushed = new AtomicBoolean(false);
     private final int pipelineFlushCount;
 
     private ScheduledExecutorService executor;
@@ -86,13 +88,16 @@ public class LettuceOrbitClient
         this.executor = Executors.newSingleThreadScheduledExecutor();
         Runnable task = () -> {
             try {
-                redisPublishingAsyncCommands.flushCommands();
+                if (!flushed.getAndSet(false))
+                {
+                    flush();
+                }
             } catch (Exception e) {
                 logger.error("Error flushing commands", e);
             }
         };
 
-        executor.scheduleAtFixedRate(task, pipelineFlushIntervalMillis, pipelineFlushIntervalMillis, TimeUnit.MILLISECONDS);
+        executor.scheduleAtFixedRate(task, pipelineFlushIntervalMillis, pipelineFlushIntervalMillis / 2, TimeUnit.MILLISECONDS);
     }
 
     public CompletableFuture<Void> subscribe(final String channelId, final RedisPubSubListener<String, Object> messageListener)
@@ -134,13 +139,18 @@ public class LettuceOrbitClient
     {
         if (needsFlush())
         {
-            redisPublishingAsyncCommands.flushCommands();
+            flush();
         }
     }
 
-    private boolean needsFlush()
+    private void flush() {
+        redisPublishingAsyncCommands.flushCommands();
+        flushed.set(true);
+    }
+
+    boolean needsFlush()
     {
-        return pipelineFlushCount > 0 && commandCounter.updateAndGet(n -> (n > pipelineFlushCount) ? 0 : n + 1 ) == 0;
+        return pipelineFlushCount > 0 && commandCounter.updateAndGet(n -> (n >= pipelineFlushCount) ? 1 : n + 1 ) == 1;
     }
 
     public boolean isConnected()
