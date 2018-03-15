@@ -65,7 +65,8 @@ public class RedisClusterConfig
     private Boolean shareEventLoop = false;
     private List<RedisPipelineStep> pipelineSteps = RedisBasicPipeline.defaultPipeline();
     private ExecutorService coreExecutorService = ForkJoinPool.commonPool();
-
+    private Long redisPipelineFlushIntervalMillis = 500L;
+    private Integer redisPipelineFlushCommandCount = 16;
 
     public List<String> getActorDirectoryUris()
     {
@@ -309,5 +310,25 @@ public class RedisClusterConfig
     public void setMessagingHealthcheckInterval(Integer messagingHealthcheckInterval)
     {
         this.messagingHealthcheckInterval = messagingHealthcheckInterval;
+    }
+
+    public Long getRedisPipelineFlushIntervalMillis()
+    {
+        return redisPipelineFlushIntervalMillis;
+    }
+
+    public void setRedisPipelineFlushIntervalMillis(final Long redisPipelineFlushIntervalMillis)
+    {
+        this.redisPipelineFlushIntervalMillis = redisPipelineFlushIntervalMillis;
+    }
+
+    public Integer getRedisPipelineFlushCommandCount()
+    {
+        return redisPipelineFlushCommandCount;
+    }
+
+    public void setRedisPipelineFlushCommandCount(final Integer redisPipelineFlushCommandCount)
+    {
+        this.redisPipelineFlushCommandCount = redisPipelineFlushCommandCount;
     }
 }

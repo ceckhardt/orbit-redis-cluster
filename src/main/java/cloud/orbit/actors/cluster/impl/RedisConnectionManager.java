@@ -99,7 +99,7 @@ public class RedisConnectionManager
         for (final String uri : messagingMasters)
         {
             logger.info("Connecting to Redis messaging node at '{}'...", uri);
-            messagingClients.add(createLettuceOrbitClient(uri));
+            messagingClients.add(createLettuceOrbitClient(uri, redisClusterConfig.getRedisPipelineFlushIntervalMillis(), redisClusterConfig.getRedisPipelineFlushCommandCount()));
 
         }
     }
@@ -170,9 +170,9 @@ public class RedisConnectionManager
     }
 
 
-    private LettuceOrbitClient createLettuceOrbitClient(final String uri)
+    private LettuceOrbitClient createLettuceOrbitClient(final String uri, final long pipelineFlushIntervalMillis, final int pipelineFlushCount)
     {
-        return new LettuceOrbitClient(this.resolveUri(uri));
+        return new LettuceOrbitClient(this.resolveUri(uri), pipelineFlushIntervalMillis, pipelineFlushCount);
     }
 
     private RedissonOrbitClient createRedissonOrbitClient(final String uri, final Boolean useJavaSerializer)

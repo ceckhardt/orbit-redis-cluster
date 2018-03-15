@@ -38,6 +38,11 @@ import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 import io.lettuce.core.pubsub.api.async.RedisPubSubAsyncCommands;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class LettuceOrbitClient
 {
@@ -49,15 +54,50 @@ public class LettuceOrbitClient
     private final StatefulRedisPubSubConnection<String, Object> redisPublishingConnection;
     private final RedisPubSubAsyncCommands<String, Object> redisPublishingAsyncCommands;
 
-    public LettuceOrbitClient(final String resolvedUri)
+    private final AtomicInteger commandCounter = new AtomicInteger(1);
+    private final AtomicBoolean flushed = new AtomicBoolean(false);
+    private final int pipelineFlushCount;
+
+    private ScheduledExecutorService executor;
+
+    public LettuceOrbitClient(final String resolvedUri, long pipelineFlushIntervalMillis, int pipelineFlushCount)
     {
+        this.pipelineFlushCount = pipelineFlushCount;
+        boolean autoFlush = pipelineFlushIntervalMillis < 1;
+
         this.redisClient = RedisClient.create(resolvedUri);
 
         this.redisSubscribingConnection = this.redisClient.connectPubSub(new FstSerializedObjectCodec());
         this.redisSubscribingAsyncCommands = this.redisSubscribingConnection.async();
+        this.redisSubscribingAsyncCommands.setAutoFlushCommands(true); // No redis pipelining on subscriptions
 
         this.redisPublishingConnection = this.redisClient.connectPubSub(new FstSerializedObjectCodec());
         this.redisPublishingAsyncCommands = this.redisPublishingConnection.async();
+        this.redisPublishingAsyncCommands.setAutoFlushCommands(autoFlush);
+
+        setupExecutor(pipelineFlushIntervalMillis);
+    }
+
+    /*
+        Single thread executor, to clean up(flush) redis pipeline in case of low command activity
+     */
+    private void setupExecutor(long pipelineFlushIntervalMillis) {
+        if (pipelineFlushIntervalMillis < 1) {
+            return;
+        }
+        this.executor = Executors.newSingleThreadScheduledExecutor();
+        Runnable task = () -> {
+            try {
+                if (!flushed.getAndSet(false))
+                {
+                    flush();
+                }
+            } catch (Exception e) {
+                logger.error("Error flushing commands", e);
+            }
+        };
+
+        executor.scheduleAtFixedRate(task, pipelineFlushIntervalMillis, pipelineFlushIntervalMillis / 2, TimeUnit.MILLISECONDS);
     }
 
     public CompletableFuture<Void> subscribe(final String channelId, final RedisPubSubListener<String, Object> messageListener)
@@ -65,8 +105,7 @@ public class LettuceOrbitClient
         if (this.redisSubscribingConnection.isOpen())
         {
             this.redisSubscribingConnection.addListener(messageListener);
-            final RedisFuture<Void> subscribeResult = this.redisSubscribingAsyncCommands.subscribe(channelId);
-            return (CompletableFuture)subscribeResult;
+            return this.redisSubscribingAsyncCommands.subscribe(channelId).toCompletableFuture();
         }
         else
         {
@@ -79,8 +118,13 @@ public class LettuceOrbitClient
 
     public CompletableFuture<Long> publish(final String channelId, final Object redisMsg)
     {
-        if (this.redisPublishingConnection.isOpen()) {
-            return (CompletableFuture)this.redisPublishingAsyncCommands.publish(channelId, redisMsg);
+        if (this.redisPublishingConnection.isOpen())
+        {
+            return this.redisPublishingAsyncCommands.publish(channelId, redisMsg).toCompletableFuture()
+                    .thenApply(r -> {
+                        this.checkFlush();
+                        return r;
+                    });
         }
         else
         {
@@ -89,6 +133,24 @@ public class LettuceOrbitClient
             result.completeExceptionally(new IllegalStateException("Error publishing to channel..."));
             return result;
         }
+    }
+
+    private void checkFlush()
+    {
+        if (needsFlush())
+        {
+            flush();
+        }
+    }
+
+    private void flush() {
+        redisPublishingAsyncCommands.flushCommands();
+        flushed.set(true);
+    }
+
+    boolean needsFlush()
+    {
+        return pipelineFlushCount > 0 && commandCounter.updateAndGet(n -> (n >= pipelineFlushCount) ? 1 : n + 1 ) == 1;
     }
 
     public boolean isConnected()
