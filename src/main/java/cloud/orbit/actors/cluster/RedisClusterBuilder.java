@@ -189,6 +189,16 @@ public class RedisClusterBuilder
         return this;
     }
 
+    public RedisClusterBuilder redisPipelineFlushCommandCount(final Integer redisPipelineFlushCommandCount) {
+        redisClusterConfig.setRedisPipelineFlushCommandCount(redisPipelineFlushCommandCount);
+        return this;
+    }
+
+    public RedisClusterBuilder redisPipelineFlushIntervalMillis(final Long redisPipelineFlushIntervalMillis) {
+        redisClusterConfig.setRedisPipelineFlushIntervalMillis(redisPipelineFlushIntervalMillis);
+        return this;
+    }
+
 
     public RedisClusterPeer build() {
         return new RedisClusterPeer(redisClusterConfig);
