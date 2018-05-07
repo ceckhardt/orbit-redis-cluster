@@ -28,7 +28,6 @@
 
 package cloud.orbit.actors.cluster.pipeline;
 
-import cloud.orbit.actors.cluster.impl.redisson.RedisPipelineCodec;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import net.jpountz.lz4.LZ4Compressor;
@@ -37,25 +36,7 @@ import net.jpountz.lz4.LZ4SafeDecompressor;
 
 import java.nio.ByteBuffer;
 
-/**
- * <p>
- * Used with {@link RedisPipelineCodec}
- * </p>
- *
- * @see RedisPipelineCodec
- *
- * <p>
- * An alternative to using this pipeline step is to create a {@link org.redisson.client.RedisClient} in
- * {@link cloud.orbit.actors.cluster.impl.RedisConnectionManager} that is configured to use an instance of
- * {@link org.redisson.codec.LZ4Codec} with an inner codec that converts the objects being persisted to a binary stream.
- * Note that the {@link org.redisson.codec.LZ4Codec} uses the {@link org.redisson.codec.FstCodec} as its inner codec by
- * default.
- * </p>
- *
- * @see org.redisson.codec.LZ4Codec
- * @see org.redisson.codec.FstCodec
- *
- */
+
 public class RedisCompressionPipelineStep implements RedisPipelineStep
 {
     private static final int DECOMPRESSION_HEADER_SIZE = Integer.SIZE / 8;
