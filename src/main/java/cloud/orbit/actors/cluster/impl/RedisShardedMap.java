@@ -30,7 +30,7 @@ package cloud.orbit.actors.cluster.impl;
 
 import com.github.ssedano.hash.JumpConsistentHash;
 
-import cloud.orbit.actors.cluster.impl.lettuce.LettuceOrbitClient;
+import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
 import cloud.orbit.exception.NotImplementedException;
 
 import java.util.Collection;
@@ -46,11 +46,11 @@ import java.util.concurrent.ConcurrentMap;
 public class RedisShardedMap<K, V> implements ConcurrentMap<K, V>
 {
     private final Integer bucketCount;
-    private final List<LettuceOrbitClient> redisClients;
+    private final List<LettuceClient> redisClients;
     private final String mapName;
     private final ConcurrentMap<String, ConcurrentMap<K, V>> cacheManager = new ConcurrentHashMap<>();
 
-    public RedisShardedMap(final String mapName, final List<LettuceOrbitClient> redisClients, final Integer bucketCount) {
+    public RedisShardedMap(final String mapName, final List<LettuceClient> redisClients, final Integer bucketCount) {
         this.mapName = mapName;
         this.redisClients = redisClients;
         this.bucketCount = bucketCount;

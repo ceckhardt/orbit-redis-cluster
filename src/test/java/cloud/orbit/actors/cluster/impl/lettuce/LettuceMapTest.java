@@ -31,7 +31,6 @@ package cloud.orbit.actors.cluster.impl.lettuce;
 import org.junit.Assert;
 
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import cloud.orbit.actors.cluster.NodeAddress;
@@ -70,25 +69,30 @@ public class LettuceMapTest
     @Test
     public void testClientsCreated() {
         Assert.assertNotNull(config);
-        List<LettuceOrbitClient> clients = connectionManager.getActorDirectoryClients();
-        Assert.assertFalse(clients.isEmpty());
-        clients = connectionManager.getMessagingClients();
+        List<LettuceClient> clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
         clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
+
+        List<LettucePubSubClient> mclients = connectionManager.getMessagingClients();
+        Assert.assertFalse(mclients.isEmpty());
+
     }
 
     @Test
     public void testMap() {
-        List<LettuceOrbitClient> clients = connectionManager.getActorDirectoryClients();
+        List<LettuceClient> clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
         RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         Assert.assertTrue(map.isEmpty());
-        map.put("key", "value");
-        String value = (String)map.get("key");
-        Assert.assertEquals("value", value);
+        String k = "key";
+        String v = "value";
+        map.put(k, v);
+        String value = (String)map.get(k);
+        Assert.assertEquals(v, value);
         Assert.assertFalse(map.isEmpty());
+        Assert.assertTrue(map.containsKey(k));
         map.remove("key");
         Assert.assertTrue(map.isEmpty());
 
@@ -134,7 +138,7 @@ public class LettuceMapTest
         map.clear();
         Assert.assertTrue(map.isEmpty());
 
-        map.put("a", "1");
+        Assert.assertNull(map.put("a", "1"));
         Assert.assertEquals("1", map.get("a"));
 
         map.remove("a");
@@ -149,12 +153,28 @@ public class LettuceMapTest
     }
 
     @Test
+    public void testRemove() {
+        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
+        map.clear();
+        map.put("a", "1");
+        Assert.assertFalse(map.isEmpty());
+        map.remove("a");
+        Assert.assertTrue(map.isEmpty());
+        Assert.assertNull(map.put("a", "1"));
+        Assert.assertFalse(map.isEmpty());
+        Assert.assertFalse(map.remove("a", "wrong"));
+        Assert.assertFalse(map.isEmpty());
+        Assert.assertNotNull(map.remove("a", "1"));
+        Assert.assertTrue(map.isEmpty());
+    }
+
+    @Test
     public void testScan() {
 
         String nodeKey = UUID.randomUUID().toString();
-        List<LettuceOrbitClient> clients = connectionManager.getNodeDirectoryClients();
+        List<LettuceClient> clients = connectionManager.getNodeDirectoryClients();
 
-        LettuceOrbitClient client = clients.get(0);
+        LettuceClient client = clients.get(0);
 
         String matches = nodeKey + "*";
         List<String> results = client.scan(matches).join();

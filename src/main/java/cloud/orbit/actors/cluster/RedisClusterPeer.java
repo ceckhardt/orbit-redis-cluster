@@ -36,7 +36,7 @@ import cloud.orbit.actors.cluster.impl.RedisKeyGenerator;
 import cloud.orbit.actors.cluster.impl.RedisMsg;
 import cloud.orbit.actors.cluster.impl.RedisShardedMap;
 
-import cloud.orbit.actors.cluster.impl.lettuce.LettuceOrbitClient;
+import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
 import cloud.orbit.concurrent.Task;
 import cloud.orbit.tuples.Pair;
 import io.lettuce.core.pubsub.RedisPubSubAdapter;
@@ -133,8 +133,8 @@ public class RedisClusterPeer implements ClusterPeer
         final String nodeKey = RedisKeyGenerator.nodeKey(clusterName, "*");
 
         List<String> keys = new ArrayList<>();
-        List<LettuceOrbitClient> clients = redisConnectionManager.getNodeDirectoryClients();
-        for(LettuceOrbitClient client : clients) {
+        List<LettuceClient> clients = redisConnectionManager.getNodeDirectoryClients();
+        for(LettuceClient client : clients) {
             keys.addAll(client.scan(nodeKey).join());
         }
 

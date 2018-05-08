@@ -34,7 +34,8 @@ import org.slf4j.LoggerFactory;
 import com.github.ssedano.hash.JumpConsistentHash;
 
 import cloud.orbit.actors.cluster.RedisClusterConfig;
-import cloud.orbit.actors.cluster.impl.lettuce.LettuceOrbitClient;
+import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
+import cloud.orbit.actors.cluster.impl.lettuce.LettucePubSubClient;
 import cloud.orbit.exception.UncheckedException;
 import io.lettuce.core.pubsub.RedisPubSubListener;
 import io.netty.channel.EventLoopGroup;
@@ -54,9 +55,9 @@ import java.util.stream.Collectors;
 public class RedisConnectionManager
 {
     private RedisClusterConfig redisClusterConfig = null;
-    private List<LettuceOrbitClient> nodeDirectoryClients = new ArrayList<>();
-    private List<LettuceOrbitClient> actorDirectoryClients = new ArrayList<>();
-    private List<LettuceOrbitClient> messagingClients = new ArrayList<>();
+    private List<LettuceClient> nodeDirectoryClients = new ArrayList<>();
+    private List<LettuceClient> actorDirectoryClients = new ArrayList<>();
+    private List<LettucePubSubClient> messagingClients = new ArrayList<>();
     private EventLoopGroup eventLoopGroup = null;
     private static Logger logger = LoggerFactory.getLogger(RedisConnectionManager.class);
 
@@ -75,17 +76,14 @@ public class RedisConnectionManager
         for (final String uri : nodeDirectoryMasters)
         {
             logger.info("Connecting to Redis Node Directory node at '{}'...", uri);
-            nodeDirectoryClients.add(createLettuceOrbitClient(uri, redisClusterConfig.getRedisPipelineFlushIntervalMillis(), redisClusterConfig.getRedisPipelineFlushCommandCount()));
-
+            nodeDirectoryClients.add(createLettuceClient(uri));
         }
 
         final List<String> actorDirectoryMasters = redisClusterConfig.getActorDirectoryUris();
         for (final String uri : actorDirectoryMasters)
         {
             logger.info("Connecting to Redis Actor Directory node at '{}'...", uri);
-            actorDirectoryClients.add(createLettuceOrbitClient(uri, redisClusterConfig.getRedisPipelineFlushIntervalMillis(), redisClusterConfig.getRedisPipelineFlushCommandCount()));
-
-
+            actorDirectoryClients.add(createLettuceClient(uri));
         }
 
 
@@ -93,33 +91,33 @@ public class RedisConnectionManager
         for (final String uri : messagingMasters)
         {
             logger.info("Connecting to Redis messaging node at '{}'...", uri);
-            messagingClients.add(createLettuceOrbitClient(uri, redisClusterConfig.getRedisPipelineFlushIntervalMillis(), redisClusterConfig.getRedisPipelineFlushCommandCount()));
+            messagingClients.add(createLettucePubSubClient(uri, redisClusterConfig.getRedisPipelineFlushIntervalMillis(), redisClusterConfig.getRedisPipelineFlushCommandCount()));
 
         }
     }
 
-    public List<LettuceOrbitClient> getNodeDirectoryClients()
+    public List<LettuceClient> getNodeDirectoryClients()
     {
         return Collections.unmodifiableList(nodeDirectoryClients);
     }
 
-    public List<LettuceOrbitClient> getActorDirectoryClients()
+    public List<LettuceClient> getActorDirectoryClients()
     {
         return Collections.unmodifiableList(actorDirectoryClients);
     }
 
-    public List<LettuceOrbitClient> getMessagingClients()
+    public List<LettucePubSubClient> getMessagingClients()
     {
         return Collections.unmodifiableList(messagingClients);
     }
 
-    public LettuceOrbitClient getShardedNodeDirectoryClient(final String shardId)
+    public LettuceClient getShardedNodeDirectoryClient(final String shardId)
     {
         final int jumpConsistentHash = JumpConsistentHash.jumpConsistentHash(shardId, nodeDirectoryClients.size());
         return nodeDirectoryClients.get(jumpConsistentHash);
     }
 
-    public LettuceOrbitClient getShardedActorDirectoryClient(final String shardId)
+    public LettuceClient getShardedActorDirectoryClient(final String shardId)
     {
         final int jumpConsistentHash = JumpConsistentHash.jumpConsistentHash(shardId, actorDirectoryClients.size());
         return actorDirectoryClients.get(jumpConsistentHash);
@@ -127,7 +125,7 @@ public class RedisConnectionManager
 
     public void subscribeToChannel(final String channelId, final RedisPubSubListener<String, Object> statusListener)
     {
-        for (final LettuceOrbitClient messagingClient : messagingClients)
+        for (final LettucePubSubClient messagingClient : messagingClients)
         {
             messagingClient.subscribe(channelId, statusListener).exceptionally((e) ->
             {
@@ -139,7 +137,7 @@ public class RedisConnectionManager
 
     public void sendMessageToChannel(final String channelId, final Object msg)
     {
-        final List<LettuceOrbitClient> localMessagingClients = messagingClients.stream().filter((e) -> e.isConnected()).collect(Collectors.toList());
+        final List<LettucePubSubClient> localMessagingClients = messagingClients.stream().filter((e) -> e.isConnected()).collect(Collectors.toList());
         final int activeClientCount = localMessagingClients.size();
         if(activeClientCount > 0)
         {
@@ -158,15 +156,19 @@ public class RedisConnectionManager
 
     public void shutdownConnections()
     {
-        nodeDirectoryClients.forEach(LettuceOrbitClient::shutdown);
-        actorDirectoryClients.forEach(LettuceOrbitClient::shutdown);
-        messagingClients.forEach(LettuceOrbitClient::shutdown);
+        nodeDirectoryClients.forEach(LettuceClient::shutdown);
+        actorDirectoryClients.forEach(LettuceClient::shutdown);
+        messagingClients.forEach(LettucePubSubClient::shutdown);
     }
 
-
-    private LettuceOrbitClient createLettuceOrbitClient(final String uri, final long pipelineFlushIntervalMillis, final int pipelineFlushCount)
+    private LettucePubSubClient createLettucePubSubClient(final String uri, final long pipelineFlushIntervalMillis, final int pipelineFlushCount)
     {
-        return new LettuceOrbitClient(this.resolveUri(uri), pipelineFlushIntervalMillis, pipelineFlushCount);
+        return new LettucePubSubClient(this.resolveUri(uri), pipelineFlushIntervalMillis, pipelineFlushCount);
+    }
+
+    private LettuceClient createLettuceClient(final String uri)
+    {
+        return new LettuceClient(this.resolveUri(uri));
     }
 
     private String resolveUri(final String uri)

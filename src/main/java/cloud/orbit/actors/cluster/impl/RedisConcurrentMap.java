@@ -28,21 +28,22 @@
 
 package cloud.orbit.actors.cluster.impl;
 
-import cloud.orbit.actors.cluster.impl.lettuce.LettuceOrbitClient;
+import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
+import cloud.orbit.exception.NotImplementedException;
+import io.lettuce.core.ScriptOutputType;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 
 
-public class RedisConcurrentMap implements ConcurrentMap<Object, Object>
+public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
 {
     private final String name;
-    private final LettuceOrbitClient redisClient;
+    private final LettuceClient redisClient;
 
-    public RedisConcurrentMap(final String name, final LettuceOrbitClient redisClient) {
+    public RedisConcurrentMap(final String name, final LettuceClient redisClient) {
         this.name = name;
         this.redisClient = redisClient;
     }
@@ -62,50 +63,57 @@ public class RedisConcurrentMap implements ConcurrentMap<Object, Object>
     @Override
     public boolean containsKey(final Object key)
     {
-        return redisClient.getAsyncCommands().hexists(name, Objects.toString(key)).toCompletableFuture().join();
+        return redisClient.getAsyncCommands().hexists(name, (String)key).toCompletableFuture().join();
     }
 
     @Override
     public boolean containsValue(final Object value)
     {
-        throw new IllegalStateException("NOT IMPLEMENTED");
+        throw new NotImplementedException();
     }
 
     @Override
-    public Object get(final Object key)
+    public V get(final Object key)
     {
-        return redisClient.getAsyncCommands().hget(name, Objects.toString(key)).toCompletableFuture().join();
+        return (V)redisClient.getAsyncCommands().hget(name, (String)key).toCompletableFuture().join();
     }
 
     @Override
-    public Object put(final Object key, final Object value)
+    public V put(final K key, final V value)
     {
-        return redisClient.getAsyncCommands().hset(name, Objects.toString(key), value).toCompletableFuture().join();
+        final String script = "local v = redis.call('hget', KEYS[1], KEYS[2]);\n"
+                + "redis.call('hset', KEYS[1], KEYS[2], ARGV[1]);\n"
+                + "return v\n";
+        return (V)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.VALUE, new String[]{name, (String)key}, value)
+                .toCompletableFuture().join();
     }
 
     @Override
-    public Object remove(final Object key)
+    public V remove(final Object key)
     {
-        return redisClient.getAsyncCommands().hdel(name, Objects.toString(key)).toCompletableFuture().join();
+        final String script = "local v = redis.call('hget', KEYS[1], KEYS[2]); "
+                + "redis.call('hdel', KEYS[1], KEYS[2]); "
+                + "return v";
+        return (V)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.VALUE, new String[]{name, (String)key} )
+                .toCompletableFuture().join();
     }
 
     @Override
     public boolean remove(final Object key, final Object oldValue)
     {
-        // TODO this is not atomic... need to make a lua command to do this
-        Object r = this.redisClient.getAsyncCommands().hget(name, Objects.toString(key)).toCompletableFuture().join();
-        if (r != null && Objects.equals(r, oldValue)) {
-            this.redisClient.getAsyncCommands().hdel(name, Objects.toString(key)).toCompletableFuture().join();
-            return true;
-        } else {
-            return false;
-        }
+        final String script = "if redis.call('hget', KEYS[1], KEYS[2]) == ARGV[1] then\n"
+                + "  return redis.call('hdel', KEYS[1], KEYS[2])\n"
+                + "else\n"
+                + "  return 0\n"
+                + "end\n";
+        return (Boolean)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.BOOLEAN, new String[]{name, (String)key}, oldValue)
+                .toCompletableFuture().join();
 
     }
 
     @Override
-    public void putAll(final Map<? extends Object, ?> m) {
-        throw new IllegalStateException();
+    public void putAll(final Map<? extends K, ? extends V> m) {
+        throw new NotImplementedException();
     }
 
     @Override
@@ -115,53 +123,63 @@ public class RedisConcurrentMap implements ConcurrentMap<Object, Object>
     }
 
     @Override
-    public Set<Object> keySet()
+    public Set<K> keySet()
     {
-        throw new IllegalStateException("NOT IMPLEMENTED");
+        throw new NotImplementedException();
     }
 
     @Override
-    public Collection<Object> values()
+    public Collection<V> values()
     {
-        throw new IllegalStateException("NOT IMPLEMENTED");
+        throw new NotImplementedException();
     }
 
     @Override
-    public Set<Entry<Object, Object>> entrySet()
+    public Set<Entry<K, V>> entrySet()
     {
-        throw new IllegalStateException("NOT IMPLEMENTED");
+        throw new NotImplementedException();
     }
 
 
     @Override
-    public Object putIfAbsent(final Object key, final Object value)
+    public V putIfAbsent(final K key, final V value)
     {
-        return this.redisClient.getAsyncCommands().hsetnx(name, Objects.toString(key), value).toCompletableFuture().join();
+        final String script = "if redis.call('hsetnx', KEYS[1], KEYS[2], ARGV[1]) == 1 then\n"
+                + "  return nil\n"
+                + "else \n"
+                + "  return redis.call('hget', KEYS[1], KEYS[2])\n"
+                + "end";
+        return (V)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.VALUE, new String[]{name, (String)key}, value)
+                .toCompletableFuture().join();
+
     }
 
     @Override
     public boolean replace(final Object key, final Object oldValue, final Object newValue)
     {
-        // TODO this is not atomic... need to make a lua command to do this
-        Object r = this.redisClient.getAsyncCommands().hget(name, Objects.toString(key)).toCompletableFuture().join();
-        if (r != null && Objects.equals(r, oldValue)) {
-            this.redisClient.getAsyncCommands().hset(name, Objects.toString(key), newValue).toCompletableFuture().join();
-            return true;
-        } else {
-            return false;
-        }
+        final String script = "if redis.call('hget', KEYS[1], KEYS[2]) == ARGV[1] then\n"
+                + "  redis.call('hset', KEYS[1], KEYS[2], ARGV[2]);\n"
+                + "  return 1;\n"
+                + "else\n"
+                + "  return 0;\n"
+                + "end\n";
+
+        return (Boolean)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.BOOLEAN, new String[]{name, (String)key}, oldValue, newValue)
+                .toCompletableFuture().join();
     }
 
     @Override
-    public Object replace(final Object key, final Object value)
+    public V replace(final K key, final V value)
     {
-        // TODO this is not atomic... need to make a lua command to do this
-        Object r = this.redisClient.getAsyncCommands().hget(name, Objects.toString(key)).toCompletableFuture().join();
-        if (r != null) {
-            this.redisClient.getAsyncCommands().hset(name, Objects.toString(key), value).toCompletableFuture().join();
-            return r;
-        } else {
-            return null;
-        }
+        final String script = "if redis.call('hexists', KEYS[1], KEYS[2]) == 1 then\n"
+                + "  local v = redis.call('hget', KEYS[1], KEYS[2]); \n"
+                + "  redis.call('hset', KEYS[1], KEYS[2], ARGV[1]);\n"
+                + "  return v;\n"
+                + "else\n"
+                + "  return nil;\n"
+                + "end\n";
+        return (V)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.VALUE, new String[]{name, (String)key}, value)
+                .toCompletableFuture().join();
+
     }
 }
