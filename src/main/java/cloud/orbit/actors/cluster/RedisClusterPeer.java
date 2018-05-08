@@ -125,7 +125,7 @@ public class RedisClusterPeer implements ClusterPeer
     private void writeMyEntry()
     {
         final String nodeKey = RedisKeyGenerator.nodeKey(clusterName, localAddress.toString());
-        redisConnectionManager.getShardedNodeDirectoryClient(nodeKey).set(localAddress.toString(), TimeUnit.SECONDS.toMillis(config.getNodeLifetimeSeconds())).join();
+        redisConnectionManager.getShardedNodeDirectoryClient(nodeKey).set(nodeKey, localAddress.toString(), TimeUnit.SECONDS.toMillis(config.getNodeLifetimeSeconds())).join();
     }
 
     private void syncNodes()

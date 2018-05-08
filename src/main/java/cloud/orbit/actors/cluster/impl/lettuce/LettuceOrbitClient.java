@@ -236,7 +236,7 @@ public class LettuceOrbitClient
     }
 
     public RedisAsyncCommands<String, Object> getAsyncCommands() {
-        if (this.asyncCommands.isOpen()) {
+        if (this.asyncCommands != null && this.asyncCommands.isOpen()) {
             return this.asyncCommands;
         }
         this.asyncCommands = this.redisClient.connect(new FstSerializedObjectCodec()).async();
@@ -246,6 +246,7 @@ public class LettuceOrbitClient
     {
         this.redisSubscribingConnection.close();
         this.redisPublishingConnection.close();
+
         this.redisClient.shutdown();
     }
 }

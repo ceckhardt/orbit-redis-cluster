@@ -34,13 +34,18 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import cloud.orbit.actors.cluster.NodeAddress;
+import cloud.orbit.actors.cluster.NodeAddressImpl;
 import cloud.orbit.actors.cluster.RedisClusterConfig;
 import cloud.orbit.actors.cluster.impl.RedisConnectionManager;
+import cloud.orbit.actors.cluster.impl.RedisKeyGenerator;
 import cloud.orbit.actors.cluster.impl.RedisShardedMap;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 
 public class LettuceMapTest
@@ -65,7 +70,7 @@ public class LettuceMapTest
     @Test
     public void testClientsCreated() {
         Assert.assertNotNull(config);
-        List<LettuceOrbitClient> clients = connectionManager.getNodeDirectoryClients();
+        List<LettuceOrbitClient> clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
         clients = connectionManager.getMessagingClients();
         Assert.assertFalse(clients.isEmpty());
@@ -75,9 +80,9 @@ public class LettuceMapTest
 
     @Test
     public void testMap() {
-        List<LettuceOrbitClient> clients = connectionManager.getNodeDirectoryClients();
+        List<LettuceOrbitClient> clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
-        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getNodeDirectoryClients(), 10);
+        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         Assert.assertTrue(map.isEmpty());
         map.put("key", "value");
@@ -91,7 +96,7 @@ public class LettuceMapTest
 
     @Test
     public void testMapSize() {
-        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getNodeDirectoryClients(), 10);
+        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         Assert.assertTrue(map.isEmpty());
 
@@ -108,7 +113,7 @@ public class LettuceMapTest
 
     @Test
     public void testMapReplace() {
-        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getNodeDirectoryClients(), 10);
+        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         Assert.assertTrue(map.isEmpty());
 
@@ -125,7 +130,7 @@ public class LettuceMapTest
 
     @Test
     public void testMapRemove() {
-        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getNodeDirectoryClients(), 10);
+        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         Assert.assertTrue(map.isEmpty());
 
@@ -141,5 +146,35 @@ public class LettuceMapTest
 
         map.remove("a", "1");
         Assert.assertTrue(map.isEmpty());
+    }
+
+    @Test
+    public void testScan() {
+
+        String nodeKey = UUID.randomUUID().toString();
+        List<LettuceOrbitClient> clients = connectionManager.getNodeDirectoryClients();
+
+        LettuceOrbitClient client = clients.get(0);
+
+        String matches = nodeKey + "*";
+        List<String> results = client.scan(matches).join();
+        Assert.assertTrue(results.isEmpty());
+
+        client.set(nodeKey + ".1", "1").join();
+        client.set(nodeKey + ".2", "2").join();
+
+        results = client.scan(matches).join();
+        Assert.assertTrue(results.size() == 2);
+    }
+
+    @Test
+    public void nodeScanTest() {
+        String clusterName = "testcluster";
+        NodeAddress localAddress = new NodeAddressImpl(UUID.randomUUID());
+        final String nodeKey = RedisKeyGenerator.nodeKey(clusterName, localAddress.toString());
+        long expire = TimeUnit.SECONDS.toMillis(config.getNodeLifetimeSeconds());
+        connectionManager.getShardedNodeDirectoryClient(nodeKey).set(nodeKey, localAddress.toString(), expire).join();
+        String result = (String)connectionManager.getShardedNodeDirectoryClient(nodeKey).get(nodeKey).join();
+        Assert.assertEquals(localAddress.toString(), result);
     }
 }
