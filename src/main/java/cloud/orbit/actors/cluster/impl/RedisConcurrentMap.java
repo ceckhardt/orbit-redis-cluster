@@ -37,13 +37,21 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 
-
+/**
+ * WARNING - Lettuce api for redis hash and set types come with some considerations.  Lettuce forces KKV generics onto
+ * maps and sets where K - key of map or set, K - field of map or set, V - value associated with that field.  This may
+ * give you trouble if you are expecting your name of the map or set and the fields in the map or set to be of different
+ * types.  The way around this is to invoke lua directly and pass parameters into K[] or V... to purposely choose
+ * which serializer to use.  Codecs of the same type for K and V i.e. <String, String> or <Object, Object> won't have
+ * issues, but if you wanted mixed codecs i.e. <String, Object>, you will likely have issues.
+ *
+ */
 public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
 {
     private final String name;
-    private final LettuceClient<Object, Object> redisClient;
+    private final LettuceClient<String, Object> redisClient;
 
-    public RedisConcurrentMap(final String name, final LettuceClient<Object, Object> redisClient) {
+    public RedisConcurrentMap(final String name, final LettuceClient<String, Object> redisClient) {
         this.name = name;
         this.redisClient = redisClient;
     }
@@ -60,10 +68,13 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
         return size() == 0;
     }
 
+    private static final String scriptContains =
+            "return redis.call('hexists', KEYS[1], ARGV[1]);\n";
     @Override
     public boolean containsKey(final Object key)
     {
-        return redisClient.getAsyncCommands().hexists(name, key).toCompletableFuture().join();
+        return (Boolean)this.redisClient.getAsyncCommands().eval(scriptContains, ScriptOutputType.BOOLEAN, new String[]{name}, key)
+                .toCompletableFuture().join();
     }
 
     @Override
@@ -72,43 +83,50 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
         throw new NotImplementedException();
     }
 
+    private static final String scriptGet =
+            "return redis.call('hget', KEYS[1], ARGV[1]);\n";
     @Override
     public V get(final Object key)
     {
-        return (V)redisClient.getAsyncCommands().hget(name, key).toCompletableFuture().join();
+        return (V)this.redisClient.getAsyncCommands().eval(scriptGet, ScriptOutputType.VALUE, new String[]{name}, key)
+                .toCompletableFuture().join();
     }
 
+    private static final String scriptPut =
+            "local v = redis.call('hget', KEYS[1], ARGV[1]);\n" +
+            "redis.call('hset', KEYS[1], ARGV[1], ARGV[2]);\n" +
+            "return v\n";
     @Override
     public V put(final K key, final V value)
     {
-        final String script = "local v = redis.call('hget', KEYS[1], KEYS[2]);\n"
-                + "redis.call('hset', KEYS[1], KEYS[2], KEYS[3]);\n"
-                + "return v\n";
-        return (V)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.VALUE, name, key, value)
+        return (V)this.redisClient.getAsyncCommands().eval(scriptPut, ScriptOutputType.VALUE, new String[]{name}, key, value)
                 .toCompletableFuture().join();
     }
+
+    private static final String scriptRemove =
+            "local v = redis.call('hget', KEYS[1], ARGV[1]);\n" +
+            "redis.call('hdel', KEYS[1], ARGV[1]);\n" +
+            "return v";
 
     @Override
     public V remove(final Object key)
     {
-        final String script = "local v = redis.call('hget', KEYS[1], KEYS[2]); "
-                + "redis.call('hdel', KEYS[1], KEYS[2]); "
-                + "return v";
-        return (V)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.VALUE, name, key)
+        return (V)this.redisClient.getAsyncCommands().eval(scriptRemove, ScriptOutputType.VALUE, new String[]{name}, key)
                 .toCompletableFuture().join();
     }
+
+    private static final String scriptRemoveMatchingOldValue =
+            "if redis.call('hget', KEYS[1], ARGV[1]) == ARGV[2] then\n" +
+            "  return redis.call('hdel', KEYS[1], ARGV[1])\n" +
+            "else\n" +
+            "  return 0\n" +
+            "end\n";
 
     @Override
     public boolean remove(final Object key, final Object oldValue)
     {
-        final String script = "if redis.call('hget', KEYS[1], KEYS[2]) == KEYS[3] then\n"
-                + "  return redis.call('hdel', KEYS[1], KEYS[2])\n"
-                + "else\n"
-                + "  return 0\n"
-                + "end\n";
-        return (Boolean)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.BOOLEAN, name, key, oldValue)
+        return (Boolean)this.redisClient.getAsyncCommands().eval(scriptRemoveMatchingOldValue, ScriptOutputType.BOOLEAN, new String[]{name}, key, oldValue)
                 .toCompletableFuture().join();
-
     }
 
     @Override
@@ -141,44 +159,48 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     }
 
 
+    private static final String scriptPutIfAbsent =
+            "if redis.call('hsetnx', KEYS[1], ARGV[1], ARGV[2]) == 1 then\n" +
+            "  return nil\n" +
+            "else \n" +
+            "  return redis.call('hget', KEYS[1], ARGV[1])\n" +
+            "end";
+
     @Override
     public V putIfAbsent(final K key, final V value)
     {
-        final String script = "if redis.call('hsetnx', KEYS[1], KEYS[2], KEYS[3]) == 1 then\n"
-                + "  return nil\n"
-                + "else \n"
-                + "  return redis.call('hget', KEYS[1], KEYS[2])\n"
-                + "end";
-        return (V)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.VALUE, name, key, value)
+        return (V)this.redisClient.getAsyncCommands().eval(scriptPutIfAbsent, ScriptOutputType.VALUE, new String[]{name}, key, value)
                 .toCompletableFuture().join();
 
     }
 
+    private static final String scriptReplaceMatchingOldValue =
+            "if redis.call('hget', KEYS[1], ARGV[1]) == ARGV[2] then\n" +
+            "  redis.call('hset', KEYS[1], ARGV[1], ARGV[3]);\n" +
+            "  return 1;\n" +
+            "else\n" +
+            "  return 0;\n" +
+            "end\n";
     @Override
     public boolean replace(final Object key, final Object oldValue, final Object newValue)
     {
-        final String script = "if redis.call('hget', KEYS[1], KEYS[2]) == KEYS[3] then\n"
-                + "  redis.call('hset', KEYS[1], KEYS[2], KEYS[4]);\n"
-                + "  return 1;\n"
-                + "else\n"
-                + "  return 0;\n"
-                + "end\n";
-
-        return (Boolean)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.BOOLEAN, name, key, oldValue, newValue)
+        return (Boolean)this.redisClient.getAsyncCommands().eval(scriptReplaceMatchingOldValue, ScriptOutputType.BOOLEAN, new String[]{name}, key, oldValue, newValue)
                 .toCompletableFuture().join();
     }
+
+    private static final String scriptReplace =
+            "if redis.call('hexists', KEYS[1], ARGV[1]) == 1 then\n" +
+            "  local v = redis.call('hget', KEYS[1], ARGV[1]); \n" +
+            "  redis.call('hset', KEYS[1], ARGV[1], ARGV[2]);\n" +
+            "  return v;\n" +
+            "else\n" +
+            "  return nil;\n" +
+            "end\n";
 
     @Override
     public V replace(final K key, final V value)
     {
-        final String script = "if redis.call('hexists', KEYS[1], KEYS[2]) == 1 then\n"
-                + "  local v = redis.call('hget', KEYS[1], KEYS[2]); \n"
-                + "  redis.call('hset', KEYS[1], KEYS[2], KEYS[3]);\n"
-                + "  return v;\n"
-                + "else\n"
-                + "  return nil;\n"
-                + "end\n";
-        return (V)this.redisClient.getAsyncCommands().eval(script, ScriptOutputType.VALUE, name, key, value)
+        return (V)this.redisClient.getAsyncCommands().eval(scriptReplace, ScriptOutputType.VALUE, new String[]{name}, key, value)
                 .toCompletableFuture().join();
 
     }

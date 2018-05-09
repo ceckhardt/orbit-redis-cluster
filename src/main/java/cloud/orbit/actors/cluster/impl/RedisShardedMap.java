@@ -46,11 +46,11 @@ import java.util.concurrent.ConcurrentMap;
 public class RedisShardedMap<K, V> implements ConcurrentMap<K, V>
 {
     private final Integer bucketCount;
-    private final List<LettuceClient<Object, Object>> redisClients;
+    private final List<LettuceClient<String, Object>> redisClients;
     private final String mapName;
     private final ConcurrentMap<String, ConcurrentMap<K, V>> cacheManager = new ConcurrentHashMap<>();
 
-    public RedisShardedMap(final String mapName, final List<LettuceClient<Object, Object>> redisClients, final Integer bucketCount) {
+    public RedisShardedMap(final String mapName, final List<LettuceClient<String, Object>> redisClients, final Integer bucketCount) {
         this.mapName = mapName;
         this.redisClients = redisClients;
         this.bucketCount = bucketCount;

@@ -58,7 +58,7 @@ public class RedisConnectionManager
 {
 
     private List<LettuceClient<String, Object>> nodeDirectoryClients = new ArrayList<>();
-    private List<LettuceClient<Object, Object>> actorDirectoryClients = new ArrayList<>();
+    private List<LettuceClient<String, Object>> actorDirectoryClients = new ArrayList<>();
     private List<LettucePubSubClient> messagingClients = new ArrayList<>();
     private EventLoopGroup eventLoopGroup = null;
     private static Logger logger = LoggerFactory.getLogger(RedisConnectionManager.class);
@@ -101,7 +101,7 @@ public class RedisConnectionManager
         return Collections.unmodifiableList(nodeDirectoryClients);
     }
 
-    public List<LettuceClient<Object, Object>> getActorDirectoryClients()
+    public List<LettuceClient<String, Object>> getActorDirectoryClients()
     {
         return Collections.unmodifiableList(actorDirectoryClients);
     }
@@ -117,7 +117,7 @@ public class RedisConnectionManager
         return nodeDirectoryClients.get(jumpConsistentHash);
     }
 
-    public LettuceClient<Object, Object> getShardedActorDirectoryClient(final String shardId)
+    public LettuceClient<String, Object> getShardedActorDirectoryClient(final String shardId)
     {
         final int jumpConsistentHash = JumpConsistentHash.jumpConsistentHash(shardId, actorDirectoryClients.size());
         return actorDirectoryClients.get(jumpConsistentHash);
@@ -166,9 +166,9 @@ public class RedisConnectionManager
         return new LettucePubSubClient(this.resolveUri(uri), pipelineFlushIntervalMillis, pipelineFlushCount);
     }
 
-    private LettuceClient<Object, Object> createLettuceActorClient(final String uri)
+    private LettuceClient<String, Object> createLettuceActorClient(final String uri)
     {
-        return new LettuceClient<>(this.resolveUri(uri), new FstObjectCodec());
+        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec());
     }
 
     private LettuceClient<String, Object> createLettuceNodeClient(final String uri)

@@ -39,11 +39,13 @@ import cloud.orbit.actors.cluster.RedisClusterConfig;
 import cloud.orbit.actors.cluster.impl.RedisConnectionManager;
 import cloud.orbit.actors.cluster.impl.RedisKeyGenerator;
 import cloud.orbit.actors.cluster.impl.RedisShardedMap;
+import io.lettuce.core.ScriptOutputType;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -74,7 +76,7 @@ public class LettuceMapTest
     public void testClientsCreated() {
         Assert.assertNotNull(config);
 
-        List<LettuceClient<Object, Object>> clients = connectionManager.getActorDirectoryClients();
+        List<LettuceClient<String, Object>> clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
 
         clients = connectionManager.getActorDirectoryClients();
@@ -84,9 +86,25 @@ public class LettuceMapTest
         Assert.assertFalse(mclients.isEmpty());
     }
 
+    public void testScript() {
+        List<LettuceClient<String, Object>> clients = connectionManager.getNodeDirectoryClients();
+        LettuceClient<String, Object> client = clients.get(0);
+
+        String scriptContains =
+                "return redis.call('hexists', KEYS[1], ARGV[1]);\n";
+
+        String digest = client.getAsyncCommands().digest(scriptContains);
+        String name = "name";
+        String key = "key";
+        Boolean e = (Boolean)client.getAsyncCommands().eval(scriptContains, ScriptOutputType.BOOLEAN, new String[]{name}, key)
+                .toCompletableFuture().join();
+        String sha = client.getAsyncCommands().scriptLoad(scriptContains).toCompletableFuture().join();
+        Assert.assertEquals(digest, sha);
+    }
+
     @Test
     public void testMap() {
-        List<LettuceClient<Object, Object>> clients = connectionManager.getActorDirectoryClients();
+        List<LettuceClient<String, Object>> clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
         RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
@@ -181,7 +199,7 @@ public class LettuceMapTest
 
         LettuceClient<String, Object> client = clients.get(0);
 
-        String matches = "*" + nodeKey + "*";
+        String matches = nodeKey + "*";
         List<String> results = client.scan(matches).join();
         Assert.assertTrue(results.isEmpty());
 
@@ -214,5 +232,21 @@ public class LettuceMapTest
         Assert.assertNotNull(b);
         String r = (String)codec.decodeKey(b);
         Assert.assertEquals(s, r);
+
+
+        connectionManager.getShardedActorDirectoryClient(nodeKey).set(nodeKey, localAddress.toString(), TimeUnit.SECONDS.toMillis(config.getNodeLifetimeSeconds())).join();
+    }
+
+    @Test
+    public void putIfAbsentTest() {
+        RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
+        String key = UUID.randomUUID().toString();
+        String value = "value";
+        Assert.assertFalse(map.containsKey(key));
+        Object o = map.putIfAbsent(key, value);
+        Assert.assertNull(o);
+
+        o = map.putIfAbsent(key, "wrong");
+        Assert.assertEquals(value, o);
     }
 }
