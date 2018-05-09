@@ -50,14 +50,21 @@ public class LettuceClient<K, V>
 
     private final RedisClient redisClient;
     private final RedisCodec<K, V> codec;
+    private final String redisUri;
 
     private RedisAsyncCommands<K, V> asyncCommands;
 
     public LettuceClient(final String resolvedUri, RedisCodec<K, V> codec)
     {
+        this.redisUri = resolvedUri;
         this.redisClient = RedisClient.create(resolvedUri);
         this.codec = codec;
         this.asyncCommands = this.redisClient.connect(codec).async();
+    }
+
+    public String getRedisUri()
+    {
+        return this.redisUri;
     }
 
     public CompletableFuture<V> get(final K key) {

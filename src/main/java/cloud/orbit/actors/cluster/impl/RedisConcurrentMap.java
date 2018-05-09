@@ -28,11 +28,17 @@
 
 package cloud.orbit.actors.cluster.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
 import cloud.orbit.exception.NotImplementedException;
+import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
+import io.lettuce.core.api.sync.RedisScriptingCommands;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
@@ -48,12 +54,41 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
 {
+    private static Logger logger = LoggerFactory.getLogger(RedisConcurrentMap.class);
+
     private final String name;
     private final LettuceClient<String, Object> redisClient;
+
+    private Map<String, String> shaCache = new HashMap<>();
 
     public RedisConcurrentMap(final String name, final LettuceClient<String, Object> redisClient) {
         this.name = name;
         this.redisClient = redisClient;
+        loadScripts();
+    }
+
+    private void loadScripts()
+    {
+        // Need a temporary default lettuce client to load scripts into redis cache
+        RedisClient tempClient = RedisClient.create(redisClient.getRedisUri());
+        RedisScriptingCommands<String, String> commands = tempClient.connect().sync();
+        populateCache(commands, scriptContains);
+        populateCache(commands, scriptGet);
+        populateCache(commands, scriptPut);
+        populateCache(commands, scriptPutIfAbsent);
+        populateCache(commands, scriptRemove);
+        populateCache(commands, scriptRemoveMatchingOldValue);
+        populateCache(commands, scriptReplace);
+        populateCache(commands, scriptReplaceMatchingOldValue);
+        // Now all the sha's are loaded on this redis shard, shut down the temp client
+        tempClient.shutdown();
+    }
+
+    private void populateCache(final RedisScriptingCommands<String, String> commands, final String script)
+    {
+        String sha = commands.scriptLoad(script);
+        shaCache.put(script, sha);
+        logger.debug("Cached sha {} for script {}", sha, script);
     }
 
     @Override
@@ -73,7 +108,7 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     @Override
     public boolean containsKey(final Object key)
     {
-        return (Boolean)this.redisClient.getAsyncCommands().eval(scriptContains, ScriptOutputType.BOOLEAN, new String[]{name}, key)
+        return (Boolean)this.redisClient.getAsyncCommands().evalsha(shaCache.get(scriptContains), ScriptOutputType.BOOLEAN, new String[]{name}, key)
                 .toCompletableFuture().join();
     }
 
@@ -88,7 +123,7 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     @Override
     public V get(final Object key)
     {
-        return (V)this.redisClient.getAsyncCommands().eval(scriptGet, ScriptOutputType.VALUE, new String[]{name}, key)
+        return (V)this.redisClient.getAsyncCommands().evalsha(shaCache.get(scriptGet), ScriptOutputType.VALUE, new String[]{name}, key)
                 .toCompletableFuture().join();
     }
 
@@ -99,7 +134,7 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     @Override
     public V put(final K key, final V value)
     {
-        return (V)this.redisClient.getAsyncCommands().eval(scriptPut, ScriptOutputType.VALUE, new String[]{name}, key, value)
+        return (V)this.redisClient.getAsyncCommands().evalsha(shaCache.get(scriptPut), ScriptOutputType.VALUE, new String[]{name}, key, value)
                 .toCompletableFuture().join();
     }
 
@@ -111,7 +146,7 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     @Override
     public V remove(final Object key)
     {
-        return (V)this.redisClient.getAsyncCommands().eval(scriptRemove, ScriptOutputType.VALUE, new String[]{name}, key)
+        return (V)this.redisClient.getAsyncCommands().evalsha(shaCache.get(scriptRemove), ScriptOutputType.VALUE, new String[]{name}, key)
                 .toCompletableFuture().join();
     }
 
@@ -125,7 +160,7 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     @Override
     public boolean remove(final Object key, final Object oldValue)
     {
-        return (Boolean)this.redisClient.getAsyncCommands().eval(scriptRemoveMatchingOldValue, ScriptOutputType.BOOLEAN, new String[]{name}, key, oldValue)
+        return (Boolean)this.redisClient.getAsyncCommands().evalsha(shaCache.get(scriptRemoveMatchingOldValue), ScriptOutputType.BOOLEAN, new String[]{name}, key, oldValue)
                 .toCompletableFuture().join();
     }
 
@@ -169,7 +204,7 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     @Override
     public V putIfAbsent(final K key, final V value)
     {
-        return (V)this.redisClient.getAsyncCommands().eval(scriptPutIfAbsent, ScriptOutputType.VALUE, new String[]{name}, key, value)
+        return (V)this.redisClient.getAsyncCommands().evalsha(shaCache.get(scriptPutIfAbsent), ScriptOutputType.VALUE, new String[]{name}, key, value)
                 .toCompletableFuture().join();
 
     }
@@ -184,7 +219,7 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     @Override
     public boolean replace(final Object key, final Object oldValue, final Object newValue)
     {
-        return (Boolean)this.redisClient.getAsyncCommands().eval(scriptReplaceMatchingOldValue, ScriptOutputType.BOOLEAN, new String[]{name}, key, oldValue, newValue)
+        return (Boolean)this.redisClient.getAsyncCommands().evalsha(shaCache.get(scriptReplaceMatchingOldValue), ScriptOutputType.BOOLEAN, new String[]{name}, key, oldValue, newValue)
                 .toCompletableFuture().join();
     }
 
@@ -200,7 +235,7 @@ public class RedisConcurrentMap<K, V> implements ConcurrentMap<K, V>
     @Override
     public V replace(final K key, final V value)
     {
-        return (V)this.redisClient.getAsyncCommands().eval(scriptReplace, ScriptOutputType.VALUE, new String[]{name}, key, value)
+        return (V)this.redisClient.getAsyncCommands().evalsha(shaCache.get(scriptReplace), ScriptOutputType.VALUE, new String[]{name}, key, value)
                 .toCompletableFuture().join();
 
     }

@@ -40,6 +40,9 @@ import cloud.orbit.actors.cluster.impl.RedisConnectionManager;
 import cloud.orbit.actors.cluster.impl.RedisKeyGenerator;
 import cloud.orbit.actors.cluster.impl.RedisShardedMap;
 import io.lettuce.core.ScriptOutputType;
+import io.lettuce.core.codec.ByteArrayCodec;
+import io.lettuce.core.codec.RedisCodec;
+import io.lettuce.core.codec.StringCodec;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -86,20 +89,46 @@ public class LettuceMapTest
         Assert.assertFalse(mclients.isEmpty());
     }
 
+    @Test
     public void testScript() {
-        List<LettuceClient<String, Object>> clients = connectionManager.getNodeDirectoryClients();
-        LettuceClient<String, Object> client = clients.get(0);
 
-        String scriptContains =
-                "return redis.call('hexists', KEYS[1], ARGV[1]);\n";
+        RedisCodec c = StringCodec.UTF8;
+        RedisCodec codec = new FstStringObjectCodec();
+        LettuceClient<String, Object> client = new LettuceClient<>("redis://localhost:6379", c);
+        String script = "return 1 + 1";
 
-        String digest = client.getAsyncCommands().digest(scriptContains);
-        String name = "name";
-        String key = "key";
-        Boolean e = (Boolean)client.getAsyncCommands().eval(scriptContains, ScriptOutputType.BOOLEAN, new String[]{name}, key)
-                .toCompletableFuture().join();
-        String sha = client.getAsyncCommands().scriptLoad(scriptContains).toCompletableFuture().join();
-        Assert.assertEquals(digest, sha);
+        String shaDigest = client.getAsyncCommands().digest(script);
+        String shaCached = client.getAsyncCommands().scriptLoad(script).toCompletableFuture().join();
+
+        Assert.assertEquals(shaCached, shaDigest);
+
+        client = new LettuceClient<>("redis://localhost:6379", codec);
+        client.getAsyncCommands().eval(script, ScriptOutputType.INTEGER).toCompletableFuture().join();
+        Long r = (Long) client.getAsyncCommands().evalsha(shaCached, ScriptOutputType.INTEGER).toCompletableFuture().join();
+
+        Assert.assertEquals(2, r.longValue());
+    }
+
+    @Test
+    public void testScriptPut() {
+
+        RedisCodec c = StringCodec.UTF8;
+        RedisCodec codec = new FstStringObjectCodec();
+        LettuceClient<String, Object> client = new LettuceClient<>("redis://localhost:6379", c);
+
+        final String script =
+                "local v = redis.call('hget', KEYS[1], ARGV[1]);\n" +
+                        "redis.call('hset', KEYS[1], ARGV[1], ARGV[2]);\n" +
+                        "return v\n";
+
+        String shaDigest = client.getAsyncCommands().digest(script);
+        String shaCached = client.getAsyncCommands().scriptLoad(script).toCompletableFuture().join();
+
+        Assert.assertEquals(shaCached, shaDigest);
+
+        client = new LettuceClient<>("redis://localhost:6379", codec);
+        client.getAsyncCommands().eval(script, ScriptOutputType.VALUE, new String[]{"key"}, "field", "value").toCompletableFuture().join();
+        String r = (String) client.getAsyncCommands().evalsha(shaCached, ScriptOutputType.VALUE, new String[]{"key"}, "field", "value").toCompletableFuture().join();
     }
 
     @Test
@@ -116,9 +145,8 @@ public class LettuceMapTest
         Assert.assertEquals(v, value);
         Assert.assertFalse(map.isEmpty());
         Assert.assertTrue(map.containsKey(k));
-        //map.remove("key");
-        //Assert.assertTrue(map.isEmpty());
-
+        map.remove("key");
+        Assert.assertTrue(map.isEmpty());
     }
 
     @Test
