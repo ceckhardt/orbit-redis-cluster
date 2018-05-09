@@ -34,8 +34,10 @@ import org.slf4j.LoggerFactory;
 import com.github.ssedano.hash.JumpConsistentHash;
 
 import cloud.orbit.actors.cluster.RedisClusterConfig;
-import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
+import cloud.orbit.actors.cluster.impl.lettuce.FstObjectCodec;
+import cloud.orbit.actors.cluster.impl.lettuce.FstStringObjectCodec;
 import cloud.orbit.actors.cluster.impl.lettuce.LettucePubSubClient;
+import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
 import cloud.orbit.exception.UncheckedException;
 import io.lettuce.core.pubsub.RedisPubSubListener;
 import io.netty.channel.EventLoopGroup;
@@ -54,9 +56,9 @@ import java.util.stream.Collectors;
  */
 public class RedisConnectionManager
 {
-    private RedisClusterConfig redisClusterConfig = null;
-    private List<LettuceClient> nodeDirectoryClients = new ArrayList<>();
-    private List<LettuceClient> actorDirectoryClients = new ArrayList<>();
+
+    private List<LettuceClient<String, Object>> nodeDirectoryClients = new ArrayList<>();
+    private List<LettuceClient<Object, Object>> actorDirectoryClients = new ArrayList<>();
     private List<LettucePubSubClient> messagingClients = new ArrayList<>();
     private EventLoopGroup eventLoopGroup = null;
     private static Logger logger = LoggerFactory.getLogger(RedisConnectionManager.class);
@@ -64,8 +66,6 @@ public class RedisConnectionManager
 
     public RedisConnectionManager(final RedisClusterConfig redisClusterConfig)
     {
-        this.redisClusterConfig = redisClusterConfig;
-
         // Create shared event loop group if required
         if(redisClusterConfig.getShareEventLoop())
         {
@@ -76,14 +76,14 @@ public class RedisConnectionManager
         for (final String uri : nodeDirectoryMasters)
         {
             logger.info("Connecting to Redis Node Directory node at '{}'...", uri);
-            nodeDirectoryClients.add(createLettuceClient(uri));
+            nodeDirectoryClients.add(createLettuceNodeClient(uri));
         }
 
         final List<String> actorDirectoryMasters = redisClusterConfig.getActorDirectoryUris();
         for (final String uri : actorDirectoryMasters)
         {
             logger.info("Connecting to Redis Actor Directory node at '{}'...", uri);
-            actorDirectoryClients.add(createLettuceClient(uri));
+            actorDirectoryClients.add(createLettuceActorClient(uri));
         }
 
 
@@ -96,12 +96,12 @@ public class RedisConnectionManager
         }
     }
 
-    public List<LettuceClient> getNodeDirectoryClients()
+    public List<LettuceClient<String, Object>> getNodeDirectoryClients()
     {
         return Collections.unmodifiableList(nodeDirectoryClients);
     }
 
-    public List<LettuceClient> getActorDirectoryClients()
+    public List<LettuceClient<Object, Object>> getActorDirectoryClients()
     {
         return Collections.unmodifiableList(actorDirectoryClients);
     }
@@ -111,13 +111,13 @@ public class RedisConnectionManager
         return Collections.unmodifiableList(messagingClients);
     }
 
-    public LettuceClient getShardedNodeDirectoryClient(final String shardId)
+    public LettuceClient<String, Object> getShardedNodeDirectoryClient(final String shardId)
     {
         final int jumpConsistentHash = JumpConsistentHash.jumpConsistentHash(shardId, nodeDirectoryClients.size());
         return nodeDirectoryClients.get(jumpConsistentHash);
     }
 
-    public LettuceClient getShardedActorDirectoryClient(final String shardId)
+    public LettuceClient<Object, Object> getShardedActorDirectoryClient(final String shardId)
     {
         final int jumpConsistentHash = JumpConsistentHash.jumpConsistentHash(shardId, actorDirectoryClients.size());
         return actorDirectoryClients.get(jumpConsistentHash);
@@ -166,9 +166,14 @@ public class RedisConnectionManager
         return new LettucePubSubClient(this.resolveUri(uri), pipelineFlushIntervalMillis, pipelineFlushCount);
     }
 
-    private LettuceClient createLettuceClient(final String uri)
+    private LettuceClient<Object, Object> createLettuceActorClient(final String uri)
     {
-        return new LettuceClient(this.resolveUri(uri));
+        return new LettuceClient<>(this.resolveUri(uri), new FstObjectCodec());
+    }
+
+    private LettuceClient<String, Object> createLettuceNodeClient(final String uri)
+    {
+        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec());
     }
 
     private String resolveUri(final String uri)

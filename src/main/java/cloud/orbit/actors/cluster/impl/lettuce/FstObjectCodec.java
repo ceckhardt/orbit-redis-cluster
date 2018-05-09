@@ -38,22 +38,25 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 
-public class FstSerializedObjectCodec implements RedisCodec<String, Object>
+public class FstObjectCodec implements RedisCodec<Object, Object>
 {
-    private static final Charset charset = Charset.forName("UTF-8");
     private static final ThreadLocal<FSTConfiguration> fstConfig =
             ThreadLocal.withInitial(FSTConfiguration::createDefaultConfiguration);
 
     @Override
-    public String decodeKey(ByteBuffer bytes)
+    public Object decodeKey(ByteBuffer bytes)
     {
-        return charset.decode(bytes).toString();
+        return decode(bytes);
     }
 
     @Override
     public Object decodeValue(ByteBuffer bytes)
+    {
+        return decode(bytes);
+    }
+
+    private Object decode(ByteBuffer bytes)
     {
         try
         {
@@ -69,13 +72,18 @@ public class FstSerializedObjectCodec implements RedisCodec<String, Object>
     }
 
     @Override
-    public ByteBuffer encodeKey(String key)
+    public ByteBuffer encodeKey(Object key)
     {
-        return charset.encode(key);
+        return encode(key);
     }
 
     @Override
     public ByteBuffer encodeValue(Object value)
+    {
+        return encode(value);
+    }
+
+    private ByteBuffer encode(Object value)
     {
         try (ByteArrayOutputStream bytes = new ByteArrayOutputStream())
         {

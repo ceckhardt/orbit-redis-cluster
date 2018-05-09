@@ -31,47 +31,51 @@ package cloud.orbit.actors.cluster.impl.lettuce;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import cloud.orbit.actors.cluster.impl.RedisConcurrentMap;
 import io.lettuce.core.KeyScanCursor;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.SetArgs;
 import io.lettuce.core.api.async.RedisAsyncCommands;
+import io.lettuce.core.codec.RedisCodec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
-public class LettuceClient
+public class LettuceClient<K, V>
 {
     private static Logger logger = LoggerFactory.getLogger(LettuceClient.class);
 
     private final RedisClient redisClient;
-    private RedisAsyncCommands<String, Object> asyncCommands;
+    private final RedisCodec<K, V> codec;
 
+    private RedisAsyncCommands<K, V> asyncCommands;
 
-    public LettuceClient(final String resolvedUri) {
-
+    public LettuceClient(final String resolvedUri, RedisCodec<K, V> codec)
+    {
         this.redisClient = RedisClient.create(resolvedUri);
-        this.asyncCommands = this.redisClient.connect(new FstSerializedObjectCodec()).async();
+        this.codec = codec;
+        this.asyncCommands = this.redisClient.connect(codec).async();
     }
 
-    public CompletableFuture<Object> get(final String key) {
+    public CompletableFuture<V> get(final K key) {
         return this.asyncCommands.get(key).toCompletableFuture();
     }
 
-    public CompletableFuture<String> set(final String key, String value) {
+    public CompletableFuture<String> set(final K key, final V value) {
         return this.asyncCommands.set(key, value).toCompletableFuture();
     }
 
-    public CompletableFuture<String> set(final String key, String value, long expireMs) {
+    public CompletableFuture<String> set(final K key, final V value, final long expireMs) {
         if (expireMs < 1) {
             return this.set(key, value);
         }
         return this.asyncCommands.set(key, value, SetArgs.Builder.px(expireMs)).toCompletableFuture();
     }
 
-    public CompletableFuture<Long> del( final String key) {
+    public CompletableFuture<Long> del( final K key) {
         return this.asyncCommands.del(key).toCompletableFuture();
     }
 
@@ -102,12 +106,14 @@ public class LettuceClient
     }
 
     private CompletableFuture<List<String>> scan(
-            final KeyScanCursor<String> cursor,
+            final KeyScanCursor<K> cursor,
             final List<String> existing,
             final String matches,
             final long count) {
 
-        existing.addAll(cursor.getKeys());
+        existing.addAll(cursor.getKeys().stream()
+                .map(object -> Objects.toString(object, null))
+                .collect(Collectors.toList()));
 
         if (cursor.isFinished()) {
             return CompletableFuture.completedFuture(existing);
@@ -119,15 +125,11 @@ public class LettuceClient
 
     }
 
-    public RedisConcurrentMap getMap(final String name) {
-        return new RedisConcurrentMap(name, this);
-    }
-
-    public RedisAsyncCommands<String, Object> getAsyncCommands() {
+    public RedisAsyncCommands<K, V> getAsyncCommands() {
         if (this.asyncCommands != null && this.asyncCommands.isOpen()) {
             return this.asyncCommands;
         }
-        this.asyncCommands = this.redisClient.connect(new FstSerializedObjectCodec()).async();
+        this.asyncCommands = this.redisClient.connect(codec).async();
         return this.asyncCommands;
     }
 

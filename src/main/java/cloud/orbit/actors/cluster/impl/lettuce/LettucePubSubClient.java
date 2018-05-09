@@ -62,7 +62,7 @@ public class LettucePubSubClient
 
     public LettucePubSubClient(final String resolvedUri, long pipelineFlushIntervalMillis, int pipelineFlushCount)
     {
-        FstSerializedObjectCodec codec = new FstSerializedObjectCodec();
+        FstStringObjectCodec codec = new FstStringObjectCodec();
         this.pipelineFlushCount = pipelineFlushCount;
         boolean autoFlush = pipelineFlushIntervalMillis < 1;
 

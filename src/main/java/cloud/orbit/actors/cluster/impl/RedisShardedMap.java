@@ -46,11 +46,11 @@ import java.util.concurrent.ConcurrentMap;
 public class RedisShardedMap<K, V> implements ConcurrentMap<K, V>
 {
     private final Integer bucketCount;
-    private final List<LettuceClient> redisClients;
+    private final List<LettuceClient<Object, Object>> redisClients;
     private final String mapName;
     private final ConcurrentMap<String, ConcurrentMap<K, V>> cacheManager = new ConcurrentHashMap<>();
 
-    public RedisShardedMap(final String mapName, final List<LettuceClient> redisClients, final Integer bucketCount) {
+    public RedisShardedMap(final String mapName, final List<LettuceClient<Object, Object>> redisClients, final Integer bucketCount) {
         this.mapName = mapName;
         this.redisClients = redisClients;
         this.bucketCount = bucketCount;
@@ -62,7 +62,8 @@ public class RedisShardedMap<K, V> implements ConcurrentMap<K, V>
         if (result == null)
         {
             final Integer clientId = JumpConsistentHash.jumpConsistentHash(realName, redisClients.size());
-            ConcurrentMap temp = redisClients.get(clientId).getMap(realName);
+            LettuceClient client = redisClients.get(clientId);
+            ConcurrentMap temp = new RedisConcurrentMap(realName, client);
             result = cacheManager.putIfAbsent(realName, temp);
             if (result == null)
             {

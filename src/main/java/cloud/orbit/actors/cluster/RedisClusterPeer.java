@@ -45,6 +45,7 @@ import io.lettuce.core.pubsub.RedisPubSubListener;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -133,8 +134,8 @@ public class RedisClusterPeer implements ClusterPeer
         final String nodeKey = RedisKeyGenerator.nodeKey(clusterName, "*");
 
         List<String> keys = new ArrayList<>();
-        List<LettuceClient> clients = redisConnectionManager.getNodeDirectoryClients();
-        for(LettuceClient client : clients) {
+        List<LettuceClient<String, Object>> clients = redisConnectionManager.getNodeDirectoryClients();
+        for (LettuceClient<String, Object> client : clients) {
             keys.addAll(client.scan(nodeKey).join());
         }
 

@@ -32,15 +32,14 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import cloud.orbit.actors.cluster.impl.RedisMsg;
-import cloud.orbit.actors.cluster.impl.lettuce.FstSerializedObjectCodec;
 
 import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.UUID;
 
-public class FstSerializedObjectCodecTest
+public class FstStringObjectCodecTest
 {
-    FstSerializedObjectCodec codec = new FstSerializedObjectCodec();
+    FstStringObjectCodec codec = new FstStringObjectCodec();
 
     @Test
     public void testEncodeDecodeValue() {
