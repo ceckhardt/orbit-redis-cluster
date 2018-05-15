@@ -142,7 +142,6 @@ public class LettuceClient<K, V>
 
     public void shutdown()
     {
-        this.asyncCommands.shutdown(false);
         this.redisClient.shutdown();
     }
 }
