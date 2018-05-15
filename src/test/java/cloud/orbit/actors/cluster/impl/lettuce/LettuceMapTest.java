@@ -82,7 +82,7 @@ public class LettuceMapTest
         List<LettuceClient<String, Object>> clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
 
-        clients = connectionManager.getActorDirectoryClients();
+        clients = connectionManager.getNodeDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
 
         List<LettucePubSubClient> mclients = connectionManager.getMessagingClients();
