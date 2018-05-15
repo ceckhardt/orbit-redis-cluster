@@ -32,7 +32,9 @@ import org.junit.Assert;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 
+import cloud.orbit.actors.cluster.IntegrationTest;
 import cloud.orbit.actors.cluster.NodeAddress;
 import cloud.orbit.actors.cluster.NodeAddressImpl;
 import cloud.orbit.actors.cluster.RedisClusterConfig;
@@ -40,7 +42,6 @@ import cloud.orbit.actors.cluster.impl.RedisConnectionManager;
 import cloud.orbit.actors.cluster.impl.RedisKeyGenerator;
 import cloud.orbit.actors.cluster.impl.RedisShardedMap;
 import io.lettuce.core.ScriptOutputType;
-import io.lettuce.core.codec.ByteArrayCodec;
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.codec.StringCodec;
 
@@ -48,7 +49,6 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -65,8 +65,10 @@ public class LettuceMapTest
     String clusterName = "testcluster";
 
     @Before
-    public void setup() {
-        if (setup) {
+    public void setup()
+    {
+        if (setup)
+        {
             return;
         }
 
@@ -76,7 +78,9 @@ public class LettuceMapTest
     }
 
     @Test
-    public void testClientsCreated() {
+    @Category(IntegrationTest.class)
+    public void testClientsCreated()
+    {
         Assert.assertNotNull(config);
 
         List<LettuceClient<String, Object>> clients = connectionManager.getActorDirectoryClients();
@@ -90,7 +94,9 @@ public class LettuceMapTest
     }
 
     @Test
-    public void testScript() {
+    @Category(IntegrationTest.class)
+    public void testScript()
+    {
 
         RedisCodec c = StringCodec.UTF8;
         RedisCodec codec = new FstStringObjectCodec();
@@ -110,7 +116,9 @@ public class LettuceMapTest
     }
 
     @Test
-    public void testScriptPut() {
+    @Category(IntegrationTest.class)
+    public void testScriptPut()
+    {
 
         RedisCodec c = StringCodec.UTF8;
         RedisCodec codec = new FstStringObjectCodec();
@@ -127,12 +135,14 @@ public class LettuceMapTest
         Assert.assertEquals(shaCached, shaDigest);
 
         client = new LettuceClient<>("redis://localhost:6379", codec);
-        client.getAsyncCommands().eval(script, ScriptOutputType.VALUE, new String[]{"key"}, "field", "value").toCompletableFuture().join();
-        String r = (String) client.getAsyncCommands().evalsha(shaCached, ScriptOutputType.VALUE, new String[]{"key"}, "field", "value").toCompletableFuture().join();
+        client.getAsyncCommands().eval(script, ScriptOutputType.VALUE, new String[]{ "key" }, "field", "value").toCompletableFuture().join();
+        String r = (String) client.getAsyncCommands().evalsha(shaCached, ScriptOutputType.VALUE, new String[]{ "key" }, "field", "value").toCompletableFuture().join();
     }
 
     @Test
-    public void testMap() {
+    @Category(IntegrationTest.class)
+    public void testMap()
+    {
         List<LettuceClient<String, Object>> clients = connectionManager.getActorDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
         RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
@@ -141,7 +151,7 @@ public class LettuceMapTest
         String k = "key";
         String v = "value";
         map.put(k, v);
-        String value = (String)map.get(k);
+        String value = (String) map.get(k);
         Assert.assertEquals(v, value);
         Assert.assertFalse(map.isEmpty());
         Assert.assertTrue(map.containsKey(k));
@@ -150,13 +160,15 @@ public class LettuceMapTest
     }
 
     @Test
-    public void testMapSize() {
+    @Category(IntegrationTest.class)
+    public void testMapSize()
+    {
         RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         Assert.assertTrue(map.isEmpty());
 
         Map m = new HashMap<>();
-        m.put("a","1");
+        m.put("a", "1");
         m.put("b", "2");
         m.put("c", "3");
         map.putAll(m);
@@ -167,7 +179,9 @@ public class LettuceMapTest
     }
 
     @Test
-    public void testMapReplace() {
+    @Category(IntegrationTest.class)
+    public void testMapReplace()
+    {
         RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         Assert.assertTrue(map.isEmpty());
@@ -184,7 +198,9 @@ public class LettuceMapTest
     }
 
     @Test
-    public void testMapRemove() {
+    @Category(IntegrationTest.class)
+    public void testMapRemove()
+    {
         RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         Assert.assertTrue(map.isEmpty());
@@ -204,7 +220,9 @@ public class LettuceMapTest
     }
 
     @Test
-    public void testRemove() {
+    @Category(IntegrationTest.class)
+    public void testRemove()
+    {
         RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         map.clear();
         map.put("a", "1");
@@ -220,7 +238,9 @@ public class LettuceMapTest
     }
 
     @Test
-    public void testScan() {
+    @Category(IntegrationTest.class)
+    public void testScan()
+    {
 
         String nodeKey = UUID.randomUUID().toString();
         List<LettuceClient<String, Object>> clients = connectionManager.getNodeDirectoryClients();
@@ -239,18 +259,22 @@ public class LettuceMapTest
     }
 
     @Test
-    public void nodeScanTest() {
+    @Category(IntegrationTest.class)
+    public void nodeScanTest()
+    {
 
         NodeAddress localAddress = new NodeAddressImpl(UUID.randomUUID());
         final String nodeKey = RedisKeyGenerator.nodeKey(clusterName, localAddress.toString());
         long expire = TimeUnit.SECONDS.toMillis(config.getNodeLifetimeSeconds());
         connectionManager.getShardedNodeDirectoryClient(nodeKey).set(nodeKey, localAddress.toString(), expire).join();
-        String result = (String)connectionManager.getShardedNodeDirectoryClient(nodeKey).get(nodeKey).join();
+        String result = (String) connectionManager.getShardedNodeDirectoryClient(nodeKey).get(nodeKey).join();
         Assert.assertEquals(localAddress.toString(), result);
     }
 
     @Test
-    public void entryTest() {
+    @Category(IntegrationTest.class)
+    public void entryTest()
+    {
         NodeAddress localAddress = new NodeAddressImpl(UUID.randomUUID());
         final String nodeKey = RedisKeyGenerator.nodeKey(clusterName, localAddress.toString());
         connectionManager.getShardedNodeDirectoryClient(nodeKey).set(nodeKey, localAddress.toString(), TimeUnit.SECONDS.toMillis(config.getNodeLifetimeSeconds())).join();
@@ -258,7 +282,7 @@ public class LettuceMapTest
         String s = "this is some string";
         ByteBuffer b = codec.encodeKey(s);
         Assert.assertNotNull(b);
-        String r = (String)codec.decodeKey(b);
+        String r = (String) codec.decodeKey(b);
         Assert.assertEquals(s, r);
 
 
@@ -266,7 +290,9 @@ public class LettuceMapTest
     }
 
     @Test
-    public void putIfAbsentTest() {
+    @Category(IntegrationTest.class)
+    public void putIfAbsentTest()
+    {
         RedisShardedMap map = new RedisShardedMap("test.map", connectionManager.getActorDirectoryClients(), 10);
         String key = UUID.randomUUID().toString();
         String value = "value";
@@ -278,3 +304,4 @@ public class LettuceMapTest
         Assert.assertEquals(value, o);
     }
 }
+
