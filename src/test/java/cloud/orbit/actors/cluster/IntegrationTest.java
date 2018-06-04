@@ -26,32 +26,8 @@
  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package cloud.orbit.actors.cluster.impl.lettuce;
+package cloud.orbit.actors.cluster;
 
-import org.junit.Assert;
-import org.junit.Test;
-
-import cloud.orbit.actors.cluster.impl.RedisMsg;
-import cloud.orbit.actors.cluster.impl.lettuce.FstSerializedObjectCodec;
-
-import java.nio.ByteBuffer;
-import java.util.Random;
-import java.util.UUID;
-
-public class FstSerializedObjectCodecTest
+public interface IntegrationTest
 {
-    FstSerializedObjectCodec codec = new FstSerializedObjectCodec();
-
-    @Test
-    public void testEncodeDecodeValue() {
-        final byte[] b = new byte[20];
-        new Random().nextBytes(b);
-        final RedisMsg testRedisMsg = new RedisMsg(UUID.randomUUID(), b);
-
-        final ByteBuffer bb = codec.encodeValue(testRedisMsg);
-        final RedisMsg decodedRedisMsg = (RedisMsg)codec.decodeValue(bb);
-
-        Assert.assertEquals(testRedisMsg.getSenderAddress(), decodedRedisMsg.getSenderAddress());
-        Assert.assertArrayEquals(testRedisMsg.getMessageContents(), decodedRedisMsg.getMessageContents());
-    }
 }

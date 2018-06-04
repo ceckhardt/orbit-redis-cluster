@@ -44,7 +44,7 @@ public class RedisClusterConfig
     private List<String> actorDirectoryUris = Arrays.asList("redis://localhost");
     private List<String> nodeDirectoryUris = Arrays.asList("redis://localhost");
     private List<String> messagingUris = Arrays.asList("redis://localhost");
-    private Integer nodeLifetimeSeconds = 20;
+    private Integer nodeLifetimeSeconds = 60;
     private Integer minRedisConnections = 10;
     private Integer maxRedisConnections = 64;
     private Integer connectionTimeout = 5000;
@@ -65,7 +65,7 @@ public class RedisClusterConfig
     private Boolean shareEventLoop = false;
     private List<RedisPipelineStep> pipelineSteps = RedisBasicPipeline.defaultPipeline();
     private ExecutorService coreExecutorService = ForkJoinPool.commonPool();
-    private Long redisPipelineFlushIntervalMillis = 500L;
+    private Long redisPipelineFlushIntervalMillis = 10L;
     private Integer redisPipelineFlushCommandCount = 16;
 
     public List<String> getActorDirectoryUris()

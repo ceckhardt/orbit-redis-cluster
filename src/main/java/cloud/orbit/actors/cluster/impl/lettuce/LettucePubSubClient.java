@@ -32,7 +32,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.RedisFuture;
 import io.lettuce.core.pubsub.RedisPubSubListener;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 import io.lettuce.core.pubsub.api.async.RedisPubSubAsyncCommands;
@@ -44,11 +43,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class LettuceOrbitClient
+public class LettucePubSubClient
 {
-    private static Logger logger = LoggerFactory.getLogger(LettuceOrbitClient.class);
+    private static Logger logger = LoggerFactory.getLogger(LettucePubSubClient.class);
 
-    private final RedisClient redisClient;;
+    private final RedisClient redisClient;
     private final StatefulRedisPubSubConnection<String, Object> redisSubscribingConnection;
     private final RedisPubSubAsyncCommands<String, Object> redisSubscribingAsyncCommands;
     private final StatefulRedisPubSubConnection<String, Object> redisPublishingConnection;
@@ -60,20 +59,23 @@ public class LettuceOrbitClient
 
     private ScheduledExecutorService executor;
 
-    public LettuceOrbitClient(final String resolvedUri, long pipelineFlushIntervalMillis, int pipelineFlushCount)
+
+    public LettucePubSubClient(final String resolvedUri, long pipelineFlushIntervalMillis, int pipelineFlushCount)
     {
+        FstStringObjectCodec codec = new FstStringObjectCodec();
         this.pipelineFlushCount = pipelineFlushCount;
         boolean autoFlush = pipelineFlushIntervalMillis < 1;
 
         this.redisClient = RedisClient.create(resolvedUri);
 
-        this.redisSubscribingConnection = this.redisClient.connectPubSub(new FstSerializedObjectCodec());
+        this.redisSubscribingConnection = this.redisClient.connectPubSub(codec);
         this.redisSubscribingAsyncCommands = this.redisSubscribingConnection.async();
         this.redisSubscribingAsyncCommands.setAutoFlushCommands(true); // No redis pipelining on subscriptions
 
-        this.redisPublishingConnection = this.redisClient.connectPubSub(new FstSerializedObjectCodec());
+        this.redisPublishingConnection = this.redisClient.connectPubSub(codec);
         this.redisPublishingAsyncCommands = this.redisPublishingConnection.async();
         this.redisPublishingAsyncCommands.setAutoFlushCommands(autoFlush);
+
 
         setupExecutor(pipelineFlushIntervalMillis);
     }
@@ -158,10 +160,12 @@ public class LettuceOrbitClient
         return this.redisSubscribingConnection.isOpen() && this.redisPublishingConnection.isOpen();
     }
 
+
     public void shutdown()
     {
         this.redisSubscribingConnection.close();
         this.redisPublishingConnection.close();
+
         this.redisClient.shutdown();
     }
 }
