@@ -163,9 +163,21 @@ public class LettucePubSubClient
 
     public void shutdown()
     {
-        this.redisSubscribingConnection.close();
-        this.redisPublishingConnection.close();
-
-        this.redisClient.shutdown();
+        try {
+            this.redisSubscribingConnection.close();
+        } catch (Exception e) {
+            logger.error("Shutdown redisSubscribingConnection", e);
+        }
+        try
+        {
+            this.redisPublishingConnection.close();
+        } catch (Exception e) {
+            logger.error("Shutdown redisPublishingConnection", e);
+        }
+        try {
+            this.redisClient.shutdown();
+        } catch (Exception e) {
+            logger.error("Shutdown redisClient", e);
+        }
     }
 }

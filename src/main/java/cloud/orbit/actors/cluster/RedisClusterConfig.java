@@ -30,6 +30,9 @@ package cloud.orbit.actors.cluster;
 
 import cloud.orbit.actors.cluster.pipeline.RedisBasicPipeline;
 import cloud.orbit.actors.cluster.pipeline.RedisPipelineStep;
+import cloud.orbit.exception.UncheckedException;
+
+import java.net.URI;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -67,6 +70,8 @@ public class RedisClusterConfig
     private ExecutorService coreExecutorService = ForkJoinPool.commonPool();
     private Long redisPipelineFlushIntervalMillis = 10L;
     private Integer redisPipelineFlushCommandCount = 16;
+    private Boolean useElasticache = false;
+    private Boolean useCluster = false;
 
     public List<String> getActorDirectoryUris()
     {
@@ -331,4 +336,25 @@ public class RedisClusterConfig
     {
         this.redisPipelineFlushCommandCount = redisPipelineFlushCommandCount;
     }
+
+    public void setUseElasticache(boolean elasticache)
+    {
+        this.useElasticache = elasticache;
+    }
+
+    public Boolean getUseElasticache()
+    {
+        return this.useElasticache;
+    }
+
+    public void setUseCluster(boolean cluster)
+    {
+        this.useCluster = cluster;
+    }
+
+    public Boolean getUseCluster()
+    {
+        return this.useCluster;
+    }
+
 }

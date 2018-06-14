@@ -26,7 +26,7 @@
  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package cloud.orbit.actors.cluster.impl.lettuce;
+package cloud.orbit.actors.cluster.impl;
 
 import org.junit.Assert;
 
@@ -38,9 +38,10 @@ import cloud.orbit.actors.cluster.IntegrationTest;
 import cloud.orbit.actors.cluster.NodeAddress;
 import cloud.orbit.actors.cluster.NodeAddressImpl;
 import cloud.orbit.actors.cluster.RedisClusterConfig;
-import cloud.orbit.actors.cluster.impl.RedisConnectionManager;
-import cloud.orbit.actors.cluster.impl.RedisKeyGenerator;
-import cloud.orbit.actors.cluster.impl.RedisShardedMap;
+import cloud.orbit.actors.cluster.impl.lettuce.FstObjectCodec;
+import cloud.orbit.actors.cluster.impl.lettuce.FstStringObjectCodec;
+import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
+import cloud.orbit.actors.cluster.impl.lettuce.LettucePubSubClient;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.codec.StringCodec;
@@ -89,7 +90,7 @@ public class LettuceMapTest
         clients = connectionManager.getNodeDirectoryClients();
         Assert.assertFalse(clients.isEmpty());
 
-        List<LettucePubSubClient> mclients = connectionManager.getMessagingClients();
+        List<LettucePubSubClient> mclients = connectionManager.getActiveMessagingClients();
         Assert.assertFalse(mclients.isEmpty());
     }
 
@@ -100,17 +101,17 @@ public class LettuceMapTest
 
         RedisCodec c = StringCodec.UTF8;
         RedisCodec codec = new FstStringObjectCodec();
-        LettuceClient<String, Object> client = new LettuceClient<>("redis://localhost:6379", c);
+        LettuceClient<String, Object> client = new LettuceClient<>("redis://localhost:6379", c, 5000, false, false);
         String script = "return 1 + 1";
 
-        String shaDigest = client.getAsyncCommands().digest(script);
-        String shaCached = client.getAsyncCommands().scriptLoad(script).toCompletableFuture().join();
+        String shaDigest = client.commands().digest(script);
+        String shaCached = client.commands().scriptLoad(script).toCompletableFuture().join();
 
         Assert.assertEquals(shaCached, shaDigest);
 
-        client = new LettuceClient<>("redis://localhost:6379", codec);
-        client.getAsyncCommands().eval(script, ScriptOutputType.INTEGER).toCompletableFuture().join();
-        Long r = (Long) client.getAsyncCommands().evalsha(shaCached, ScriptOutputType.INTEGER).toCompletableFuture().join();
+        client = new LettuceClient<>("redis://localhost:6379", codec, 5000, false, false);
+        client.commands().eval(script, ScriptOutputType.INTEGER).toCompletableFuture().join();
+        Long r = (Long) client.commands().evalsha(shaCached, ScriptOutputType.INTEGER).toCompletableFuture().join();
 
         Assert.assertEquals(2, r.longValue());
     }
@@ -122,21 +123,21 @@ public class LettuceMapTest
 
         RedisCodec c = StringCodec.UTF8;
         RedisCodec codec = new FstStringObjectCodec();
-        LettuceClient<String, Object> client = new LettuceClient<>("redis://localhost:6379", c);
+        LettuceClient<String, Object> client = new LettuceClient<>("redis://localhost:6379", c, 5000, false, false);
 
         final String script =
                 "local v = redis.call('hget', KEYS[1], ARGV[1]);\n" +
                         "redis.call('hset', KEYS[1], ARGV[1], ARGV[2]);\n" +
                         "return v\n";
 
-        String shaDigest = client.getAsyncCommands().digest(script);
-        String shaCached = client.getAsyncCommands().scriptLoad(script).toCompletableFuture().join();
+        String shaDigest = client.commands().digest(script);
+        String shaCached = client.commands().scriptLoad(script).toCompletableFuture().join();
 
         Assert.assertEquals(shaCached, shaDigest);
 
-        client = new LettuceClient<>("redis://localhost:6379", codec);
-        client.getAsyncCommands().eval(script, ScriptOutputType.VALUE, new String[]{ "key" }, "field", "value").toCompletableFuture().join();
-        String r = (String) client.getAsyncCommands().evalsha(shaCached, ScriptOutputType.VALUE, new String[]{ "key" }, "field", "value").toCompletableFuture().join();
+        client = new LettuceClient<>("redis://localhost:6379", codec, 5000, false, false);
+        client.commands().eval(script, ScriptOutputType.VALUE, new String[]{ "key" }, "field", "value").toCompletableFuture().join();
+        String r = (String) client.commands().evalsha(shaCached, ScriptOutputType.VALUE, new String[]{ "key" }, "field", "value").toCompletableFuture().join();
     }
 
     @Test
