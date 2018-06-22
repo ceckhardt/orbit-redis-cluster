@@ -199,7 +199,15 @@ public class RedisClusterBuilder
         return this;
     }
 
+    public RedisClusterBuilder useElasticache(final Boolean useElasticache) {
+        redisClusterConfig.setUseElasticache(useElasticache);
+        return this;
+    }
 
+    public RedisClusterBuilder useClustering(final Boolean useClustering) {
+        redisClusterConfig.setUseCluster(useClustering);
+        return this;
+    }
     public RedisClusterPeer build() {
         return new RedisClusterPeer(redisClusterConfig);
     }
