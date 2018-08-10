@@ -58,7 +58,7 @@ public class LettucePubSubClient
     private final int pipelineFlushCount;
 
     private ScheduledExecutorService executor;
-
+    private final String redisUrl;
 
     public LettucePubSubClient(final String resolvedUri, long pipelineFlushIntervalMillis, int pipelineFlushCount)
     {
@@ -66,6 +66,7 @@ public class LettucePubSubClient
         this.pipelineFlushCount = pipelineFlushCount;
         boolean autoFlush = pipelineFlushIntervalMillis < 1;
 
+        this.redisUrl = resolvedUri;
         this.redisClient = RedisClient.create(resolvedUri);
 
         this.redisSubscribingConnection = this.redisClient.connectPubSub(codec);
@@ -78,6 +79,10 @@ public class LettucePubSubClient
 
 
         setupExecutor(pipelineFlushIntervalMillis);
+    }
+
+    public String getRedisUrl() {
+        return this.redisUrl;
     }
 
     /*

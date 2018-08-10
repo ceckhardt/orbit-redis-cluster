@@ -43,7 +43,10 @@ import io.lettuce.core.pubsub.RedisPubSubListener;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -59,10 +62,11 @@ public class RedisConnectionManager
     private final List<LettucePubSubClient> messagingClients = new ArrayList<>();
     private static final Logger logger = LoggerFactory.getLogger(RedisConnectionManager.class);
 
+    private final RedisClusterConfig redisClusterConfig;
 
     public RedisConnectionManager(final RedisClusterConfig redisClusterConfig)
     {
-
+        this.redisClusterConfig = redisClusterConfig;
         final List<String> nodeDirectoryMasters = redisClusterConfig.getNodeDirectoryUris();
         for (final String uri : nodeDirectoryMasters)
         {
@@ -79,11 +83,38 @@ public class RedisConnectionManager
 
 
         final List<String> messagingMasters = redisClusterConfig.getMessagingUris();
-        for (final String uri : messagingMasters)
-        {
+        refreshMessagingTopology(messagingMasters);
+    }
+
+    public void refreshMessagingTopology(final List<String> messagingUris) {
+        // First add missing clients
+        addMissingMessagingClients(messagingUris);
+
+        // Second remove clients that are no longer in the topology
+        removeMissingMessagingClients(messagingUris);
+    }
+
+    private void addMissingMessagingClients(List<String> messagingUris) {
+        List<String> missing = messagingUris.stream().map(url -> {
+            if (messagingClients.stream().filter(c -> c.getRedisUrl().equals(url)).findAny().isPresent()) {
+                return null;
+            }
+            return url;
+        }).filter(Objects::nonNull).collect(Collectors.toList());
+        missing.forEach(uri -> {
             logger.info("Connecting to Redis messaging node at '{}'...", uri);
             messagingClients.add(createLettucePubSubClient(uri, redisClusterConfig.getRedisPipelineFlushIntervalMillis(), redisClusterConfig.getRedisPipelineFlushCommandCount()));
+        });
+    }
 
+    private void removeMissingMessagingClients(List<String> messagingUris) {
+        Iterator<LettucePubSubClient> itr = messagingClients.iterator();
+        while (itr.hasNext()) {
+            LettucePubSubClient client = itr.next();
+            if (!messagingUris.contains(client.getRedisUrl())) {
+                itr.remove();
+                client.shutdown();
+            }
         }
     }
 
@@ -159,12 +190,12 @@ public class RedisConnectionManager
 
     private LettuceClient<String, Object> createLettuceActorClient(final String uri, final RedisClusterConfig config)
     {
-        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec(), config.getConnectionTimeout(), config.getUseCluster(), config.getUseElasticache());
+        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec(), config.getConnectionTimeout(), config.getUseClusterForDirectoryNodes(), config.getUseElasticacheForDirectoryNodes());
     }
 
     private LettuceClient<String, Object> createLettuceNodeClient(final String uri, final RedisClusterConfig config)
     {
-        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec(), config.getConnectionTimeout(), config.getUseCluster(), config.getUseElasticache());
+        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec(), config.getConnectionTimeout(), config.getUseClusterForDirectoryNodes(), config.getUseElasticacheForDirectoryNodes());
     }
 
     private  String resolveUri(final String uri)

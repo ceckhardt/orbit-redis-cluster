@@ -199,13 +199,13 @@ public class RedisClusterBuilder
         return this;
     }
 
-    public RedisClusterBuilder useElasticache(final Boolean useElasticache) {
-        redisClusterConfig.setUseElasticache(useElasticache);
+    public RedisClusterBuilder useElasticacheForDirectoryNodes(final Boolean useElasticache) {
+        redisClusterConfig.setUseElasticacheForDirectoryNodes(useElasticache);
         return this;
     }
 
-    public RedisClusterBuilder useClustering(final Boolean useClustering) {
-        redisClusterConfig.setUseCluster(useClustering);
+    public RedisClusterBuilder useClusteringForDirectoryNodes(final Boolean useClustering) {
+        redisClusterConfig.setUseClusterForDirectoryNodes(useClustering);
         return this;
     }
     public RedisClusterPeer build() {

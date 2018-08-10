@@ -123,6 +123,10 @@ public class RedisClusterPeer implements ClusterPeer
         return Task.done();
     }
 
+    public void refreshMessageTopology(final List<String> messagingUris) {
+        redisConnectionManager.refreshMessagingTopology(messagingUris);
+    }
+
     private void writeMyEntry()
     {
         final String nodeKey = RedisKeyGenerator.nodeKey(clusterName, localAddress.toString());

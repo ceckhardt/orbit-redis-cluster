@@ -44,9 +44,9 @@ import java.util.concurrent.ForkJoinPool;
  */
 public class RedisClusterConfig
 {
-    private List<String> actorDirectoryUris = Arrays.asList("redis://localhost");
-    private List<String> nodeDirectoryUris = Arrays.asList("redis://localhost");
-    private List<String> messagingUris = Arrays.asList("redis://localhost");
+    private List<String> actorDirectoryUris = Arrays.asList("redis://localhost:6379");
+    private List<String> nodeDirectoryUris = Arrays.asList("redis://localhost:6379");
+    private List<String> messagingUris = Arrays.asList("redis://localhost:6379");
     private Integer nodeLifetimeSeconds = 60;
     private Integer minRedisConnections = 10;
     private Integer maxRedisConnections = 64;
@@ -337,22 +337,22 @@ public class RedisClusterConfig
         this.redisPipelineFlushCommandCount = redisPipelineFlushCommandCount;
     }
 
-    public void setUseElasticache(boolean elasticache)
+    public void setUseElasticacheForDirectoryNodes(boolean elasticache)
     {
         this.useElasticache = elasticache;
     }
 
-    public Boolean getUseElasticache()
+    public Boolean getUseElasticacheForDirectoryNodes()
     {
         return this.useElasticache;
     }
 
-    public void setUseCluster(boolean cluster)
+    public void setUseClusterForDirectoryNodes(boolean cluster)
     {
         this.useCluster = cluster;
     }
 
-    public Boolean getUseCluster()
+    public Boolean getUseClusterForDirectoryNodes()
     {
         return this.useCluster;
     }
