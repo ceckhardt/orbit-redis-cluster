@@ -35,31 +35,66 @@ import io.lettuce.core.KeyScanCursor;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.SetArgs;
+import io.lettuce.core.api.async.BaseRedisAsyncCommands;
 import io.lettuce.core.api.async.RedisAsyncCommands;
+import io.lettuce.core.cluster.ClusterClientOptions;
+import io.lettuce.core.cluster.ClusterTopologyRefreshOptions;
+import io.lettuce.core.cluster.RedisClusterClient;
+import io.lettuce.core.cluster.api.async.RedisClusterAsyncCommands;
 import io.lettuce.core.codec.RedisCodec;
+import io.lettuce.core.resource.DefaultClientResources;
+import io.lettuce.core.resource.DirContextDnsResolver;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class LettuceClient<K, V>
 {
     private static Logger logger = LoggerFactory.getLogger(LettuceClient.class);
 
-    private final RedisClient redisClient;
+    private final RedisClusterClient redisClusterClient;
+    private final RedisClient redisSingleClient;
+
     private final RedisCodec<K, V> codec;
     private final String redisUri;
 
-    private RedisAsyncCommands<K, V> asyncCommands;
+    private BaseRedisAsyncCommands<K, V> asyncCommands;
 
-    public LettuceClient(final String resolvedUri, RedisCodec<K, V> codec)
+    public LettuceClient(final String resolvedUri, final RedisCodec<K, V> codec, final long timeoutMillis, final boolean clusterSupport, final boolean useElasticache)
     {
         this.redisUri = resolvedUri;
-        this.redisClient = RedisClient.create(resolvedUri);
+
         this.codec = codec;
-        this.asyncCommands = this.redisClient.connect(codec).async();
+
+
+        if (clusterSupport) {
+            this.redisClusterClient = RedisClusterClient.create(DefaultClientResources.builder()
+                    .dnsResolver(new DirContextDnsResolver())
+                    .build(), redisUri);
+            this.redisClusterClient.setDefaultTimeout(Duration.ofMillis(timeoutMillis));
+            final ClusterClientOptions.Builder optionsBuilder = ClusterClientOptions.builder()
+                    .topologyRefreshOptions(ClusterTopologyRefreshOptions.builder()
+                            .enablePeriodicRefresh(false)
+                            .enableAllAdaptiveRefreshTriggers()
+                            .build());
+
+            if (useElasticache) {
+                optionsBuilder.validateClusterNodeMembership(false);
+            }
+            this.redisClusterClient.setOptions(optionsBuilder.build());
+            this.asyncCommands = redisClusterClient.connect(this.codec).async();
+            this.redisSingleClient = null;
+        } else {
+            this.redisSingleClient = RedisClient.create(redisUri);
+            this.redisSingleClient.setDefaultTimeout(Duration.ofMillis(timeoutMillis));
+            this.asyncCommands = redisSingleClient.connect(this.codec).async();
+            this.redisClusterClient = null;
+        }
     }
 
     public String getRedisUri()
@@ -67,23 +102,27 @@ public class LettuceClient<K, V>
         return this.redisUri;
     }
 
+    public RedisClusterAsyncCommands<K, V> commands() {
+        return (RedisClusterAsyncCommands<K, V>) asyncCommands;
+    }
+
     public CompletableFuture<V> get(final K key) {
-        return this.asyncCommands.get(key).toCompletableFuture();
+        return commands().get(key).toCompletableFuture();
     }
 
     public CompletableFuture<String> set(final K key, final V value) {
-        return this.asyncCommands.set(key, value).toCompletableFuture();
+        return commands().set(key, value).toCompletableFuture();
     }
 
     public CompletableFuture<String> set(final K key, final V value, final long expireMs) {
         if (expireMs < 1) {
             return this.set(key, value);
         }
-        return this.asyncCommands.set(key, value, SetArgs.Builder.px(expireMs)).toCompletableFuture();
+        return commands().set(key, value, SetArgs.Builder.px(expireMs)).toCompletableFuture();
     }
 
-    public CompletableFuture<Long> del( final K key) {
-        return this.asyncCommands.del(key).toCompletableFuture();
+    public CompletableFuture<Long> del(final K key) {
+        return commands().del(key).toCompletableFuture();
     }
 
     public CompletableFuture<List<String>> scan(final String matches) {
@@ -106,10 +145,9 @@ public class LettuceClient<K, V>
             final String matches,
             final long count) {
 
-        return this.asyncCommands.scan(ScanArgs.Builder.limit(count).match(matches))
+        return commands().scan(ScanArgs.Builder.limit(count).match(matches))
                 .toCompletableFuture()
                 .thenCompose(initialCursor -> this.scan(initialCursor, existing, matches, count));
-
     }
 
     private CompletableFuture<List<String>> scan(
@@ -126,22 +164,28 @@ public class LettuceClient<K, V>
             return CompletableFuture.completedFuture(existing);
         }
 
-        return this.asyncCommands.scan(cursor, ScanArgs.Builder.limit(count).match(matches))
+        return commands().scan(cursor, ScanArgs.Builder.limit(count).match(matches))
                 .toCompletableFuture()
                 .thenCompose(newCursor -> this.scan(newCursor, existing, matches, count));
 
     }
 
-    public RedisAsyncCommands<K, V> getAsyncCommands() {
-        if (this.asyncCommands != null && this.asyncCommands.isOpen()) {
-            return this.asyncCommands;
+    public void shutdown() {
+        try {
+            if (redisClusterClient != null)
+            {
+                this.redisClusterClient.shutdown();
+            }
+        } catch (Exception e) {
+            logger.error("Shutdown redisClusterClient", e);
         }
-        this.asyncCommands = this.redisClient.connect(codec).async();
-        return this.asyncCommands;
-    }
-
-    public void shutdown()
-    {
-        this.redisClient.shutdown();
+        try {
+            if (redisSingleClient != null)
+            {
+                this.redisSingleClient.shutdown();
+            }
+        } catch (Exception e) {
+            logger.error("Shutdown redisSingleClient", e);
+        }
     }
 }

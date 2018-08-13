@@ -34,19 +34,19 @@ import org.slf4j.LoggerFactory;
 import com.github.ssedano.hash.JumpConsistentHash;
 
 import cloud.orbit.actors.cluster.RedisClusterConfig;
-import cloud.orbit.actors.cluster.impl.lettuce.FstObjectCodec;
 import cloud.orbit.actors.cluster.impl.lettuce.FstStringObjectCodec;
 import cloud.orbit.actors.cluster.impl.lettuce.LettucePubSubClient;
 import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
 import cloud.orbit.exception.UncheckedException;
 import io.lettuce.core.pubsub.RedisPubSubListener;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -57,42 +57,64 @@ import java.util.stream.Collectors;
 public class RedisConnectionManager
 {
 
-    private List<LettuceClient<String, Object>> nodeDirectoryClients = new ArrayList<>();
-    private List<LettuceClient<String, Object>> actorDirectoryClients = new ArrayList<>();
-    private List<LettucePubSubClient> messagingClients = new ArrayList<>();
-    private EventLoopGroup eventLoopGroup = null;
-    private static Logger logger = LoggerFactory.getLogger(RedisConnectionManager.class);
+    private final List<LettuceClient<String, Object>> nodeDirectoryClients = new ArrayList<>();
+    private final List<LettuceClient<String, Object>> actorDirectoryClients = new ArrayList<>();
+    private final List<LettucePubSubClient> messagingClients = new ArrayList<>();
+    private static final Logger logger = LoggerFactory.getLogger(RedisConnectionManager.class);
 
+    private final RedisClusterConfig redisClusterConfig;
 
     public RedisConnectionManager(final RedisClusterConfig redisClusterConfig)
     {
-        // Create shared event loop group if required
-        if(redisClusterConfig.getShareEventLoop())
-        {
-            eventLoopGroup = new NioEventLoopGroup();
-        }
-
+        this.redisClusterConfig = redisClusterConfig;
         final List<String> nodeDirectoryMasters = redisClusterConfig.getNodeDirectoryUris();
         for (final String uri : nodeDirectoryMasters)
         {
             logger.info("Connecting to Redis Node Directory node at '{}'...", uri);
-            nodeDirectoryClients.add(createLettuceNodeClient(uri));
+            nodeDirectoryClients.add(createLettuceNodeClient(uri, redisClusterConfig));
         }
 
         final List<String> actorDirectoryMasters = redisClusterConfig.getActorDirectoryUris();
         for (final String uri : actorDirectoryMasters)
         {
             logger.info("Connecting to Redis Actor Directory node at '{}'...", uri);
-            actorDirectoryClients.add(createLettuceActorClient(uri));
+            actorDirectoryClients.add(createLettuceActorClient(uri, redisClusterConfig));
         }
 
 
         final List<String> messagingMasters = redisClusterConfig.getMessagingUris();
-        for (final String uri : messagingMasters)
-        {
+        refreshMessagingTopology(messagingMasters);
+    }
+
+    public void refreshMessagingTopology(final List<String> messagingUris) {
+        // First add missing clients
+        addMissingMessagingClients(messagingUris);
+
+        // Second remove clients that are no longer in the topology
+        removeMissingMessagingClients(messagingUris);
+    }
+
+    private void addMissingMessagingClients(List<String> messagingUris) {
+        List<String> missing = messagingUris.stream().map(url -> {
+            if (messagingClients.stream().filter(c -> c.getRedisUrl().equals(url)).findAny().isPresent()) {
+                return null;
+            }
+            return url;
+        }).filter(Objects::nonNull).collect(Collectors.toList());
+        missing.forEach(uri -> {
             logger.info("Connecting to Redis messaging node at '{}'...", uri);
             messagingClients.add(createLettucePubSubClient(uri, redisClusterConfig.getRedisPipelineFlushIntervalMillis(), redisClusterConfig.getRedisPipelineFlushCommandCount()));
+        });
+    }
 
+    private void removeMissingMessagingClients(List<String> messagingUris) {
+        Iterator<LettucePubSubClient> itr = messagingClients.iterator();
+        while (itr.hasNext()) {
+            LettucePubSubClient client = itr.next();
+            if (!messagingUris.contains(client.getRedisUrl())) {
+                itr.remove();
+                client.shutdown();
+            }
         }
     }
 
@@ -106,9 +128,8 @@ public class RedisConnectionManager
         return Collections.unmodifiableList(actorDirectoryClients);
     }
 
-    public List<LettucePubSubClient> getMessagingClients()
-    {
-        return Collections.unmodifiableList(messagingClients);
+    public List<LettucePubSubClient> getActiveMessagingClients() {
+        return messagingClients.stream().filter((e) -> e.isConnected()).collect(Collectors.toList());
     }
 
     public LettuceClient<String, Object> getShardedNodeDirectoryClient(final String shardId)
@@ -125,7 +146,8 @@ public class RedisConnectionManager
 
     public void subscribeToChannel(final String channelId, final RedisPubSubListener<String, Object> statusListener)
     {
-        for (final LettucePubSubClient messagingClient : messagingClients)
+        final List<LettucePubSubClient> localMessagingClients = getActiveMessagingClients();
+        for (final LettucePubSubClient messagingClient : localMessagingClients)
         {
             messagingClient.subscribe(channelId, statusListener).exceptionally((e) ->
             {
@@ -137,7 +159,7 @@ public class RedisConnectionManager
 
     public void sendMessageToChannel(final String channelId, final Object msg)
     {
-        final List<LettucePubSubClient> localMessagingClients = messagingClients.stream().filter((e) -> e.isConnected()).collect(Collectors.toList());
+        final List<LettucePubSubClient> localMessagingClients = getActiveMessagingClients();
         final int activeClientCount = localMessagingClients.size();
         if(activeClientCount > 0)
         {
@@ -166,17 +188,17 @@ public class RedisConnectionManager
         return new LettucePubSubClient(this.resolveUri(uri), pipelineFlushIntervalMillis, pipelineFlushCount);
     }
 
-    private LettuceClient<String, Object> createLettuceActorClient(final String uri)
+    private LettuceClient<String, Object> createLettuceActorClient(final String uri, final RedisClusterConfig config)
     {
-        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec());
+        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec(), config.getConnectionTimeout(), config.getUseClusterForDirectoryNodes(), config.getUseElasticacheForDirectoryNodes());
     }
 
-    private LettuceClient<String, Object> createLettuceNodeClient(final String uri)
+    private LettuceClient<String, Object> createLettuceNodeClient(final String uri, final RedisClusterConfig config)
     {
-        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec());
+        return new LettuceClient<>(this.resolveUri(uri), new FstStringObjectCodec(), config.getConnectionTimeout(), config.getUseClusterForDirectoryNodes(), config.getUseElasticacheForDirectoryNodes());
     }
 
-    private String resolveUri(final String uri)
+    private  String resolveUri(final String uri)
     {
         // Resolve URI
         final URI realUri = URI.create(uri);

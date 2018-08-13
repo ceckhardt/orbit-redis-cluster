@@ -30,6 +30,9 @@ package cloud.orbit.actors.cluster;
 
 import cloud.orbit.actors.cluster.pipeline.RedisBasicPipeline;
 import cloud.orbit.actors.cluster.pipeline.RedisPipelineStep;
+import cloud.orbit.exception.UncheckedException;
+
+import java.net.URI;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -41,9 +44,9 @@ import java.util.concurrent.ForkJoinPool;
  */
 public class RedisClusterConfig
 {
-    private List<String> actorDirectoryUris = Arrays.asList("redis://localhost");
-    private List<String> nodeDirectoryUris = Arrays.asList("redis://localhost");
-    private List<String> messagingUris = Arrays.asList("redis://localhost");
+    private List<String> actorDirectoryUris = Arrays.asList("redis://localhost:6379");
+    private List<String> nodeDirectoryUris = Arrays.asList("redis://localhost:6379");
+    private List<String> messagingUris = Arrays.asList("redis://localhost:6379");
     private Integer nodeLifetimeSeconds = 60;
     private Integer minRedisConnections = 10;
     private Integer maxRedisConnections = 64;
@@ -67,6 +70,8 @@ public class RedisClusterConfig
     private ExecutorService coreExecutorService = ForkJoinPool.commonPool();
     private Long redisPipelineFlushIntervalMillis = 10L;
     private Integer redisPipelineFlushCommandCount = 16;
+    private Boolean useElasticache = false;
+    private Boolean useCluster = false;
 
     public List<String> getActorDirectoryUris()
     {
@@ -331,4 +336,25 @@ public class RedisClusterConfig
     {
         this.redisPipelineFlushCommandCount = redisPipelineFlushCommandCount;
     }
+
+    public void setUseElasticacheForDirectoryNodes(boolean elasticache)
+    {
+        this.useElasticache = elasticache;
+    }
+
+    public Boolean getUseElasticacheForDirectoryNodes()
+    {
+        return this.useElasticache;
+    }
+
+    public void setUseClusterForDirectoryNodes(boolean cluster)
+    {
+        this.useCluster = cluster;
+    }
+
+    public Boolean getUseClusterForDirectoryNodes()
+    {
+        return this.useCluster;
+    }
+
 }
