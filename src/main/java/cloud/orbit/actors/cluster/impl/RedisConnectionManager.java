@@ -35,8 +35,9 @@ import com.github.ssedano.hash.JumpConsistentHash;
 
 import cloud.orbit.actors.cluster.RedisClusterConfig;
 import cloud.orbit.actors.cluster.impl.lettuce.FstStringObjectCodec;
-import cloud.orbit.actors.cluster.impl.lettuce.LettucePubSubClient;
 import cloud.orbit.actors.cluster.impl.lettuce.LettuceClient;
+import cloud.orbit.actors.cluster.impl.lettuce.LettucePubSubClient;
+import cloud.orbit.concurrent.Task;
 import cloud.orbit.exception.UncheckedException;
 import io.lettuce.core.pubsub.RedisPubSubListener;
 
@@ -46,9 +47,11 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static java.util.stream.Collectors.toList;
 
 
 /**
@@ -100,7 +103,7 @@ public class RedisConnectionManager
                 return null;
             }
             return url;
-        }).filter(Objects::nonNull).collect(Collectors.toList());
+        }).filter(Objects::nonNull).collect(toList());
         missing.forEach(uri -> {
             logger.info("Connecting to Redis messaging node at '{}'...", uri);
             messagingClients.add(createLettucePubSubClient(uri, redisClusterConfig.getRedisPipelineFlushIntervalMillis(), redisClusterConfig.getRedisPipelineFlushCommandCount()));
@@ -129,7 +132,7 @@ public class RedisConnectionManager
     }
 
     public List<LettucePubSubClient> getActiveMessagingClients() {
-        return messagingClients.stream().filter((e) -> e.isConnected()).collect(Collectors.toList());
+        return messagingClients.stream().filter((e) -> e.isConnected()).collect(toList());
     }
 
     public LettuceClient<String, Object> getShardedNodeDirectoryClient(final String shardId)
@@ -146,16 +149,35 @@ public class RedisConnectionManager
 
     public void subscribeToChannel(final String channelId, final RedisPubSubListener<String, Object> statusListener)
     {
+        // Note: The same instances of LettucePubSubClient are being used for both node <-> node messaging and for
+        // node <-> cluster messaging, which is why messages of both types are delivered to both listeners configured
+        // in RedisClusterPeer, which is why they have `instanceof` checks to disambiguate messages.
+        // This also means that cluster heartbeats are sensitive to pipelining/batching.
         final List<LettucePubSubClient> localMessagingClients = getActiveMessagingClients();
-        for (final LettucePubSubClient messagingClient : localMessagingClients)
-        {
-            messagingClient.subscribe(channelId, statusListener).exceptionally((e) ->
-            {
-                logger.error("Error subscribing to channel", e);
-                return null;
-            });
-        }
+        logger.info("Subscribing {} Lettuce clients to channel {}", localMessagingClients.size(), channelId);
+
+        final Stream<CompletableFuture<Void>> subscribeTasks = localMessagingClients.stream()
+                .map(messagingClient -> subscribeToChannel(messagingClient, channelId, statusListener));
+
+        // Wait for all subscriptions to be completed before returning, flushing to avoid waiting for the next batch timeout.
+        localMessagingClients.forEach(LettucePubSubClient::flush);
+        Task.allOf(subscribeTasks).join();
     }
+
+    private CompletableFuture<Void> subscribeToChannel(
+            final LettucePubSubClient messagingClient,
+            final String channelId,
+            final RedisPubSubListener<String, Object> statusListener
+    )
+    {
+        return messagingClient.subscribe(channelId, statusListener)
+                .exceptionally(e ->
+                {
+                    logger.error("Error subscribing to channel", e);
+                    return null;
+                });
+    }
+
 
     public void sendMessageToChannel(final String channelId, final Object msg)
     {

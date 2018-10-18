@@ -150,7 +150,7 @@ public class LettucePubSubClient
         }
     }
 
-    private void flush() {
+    public void flush() {
         redisPublishingAsyncCommands.flushCommands();
         flushed.set(true);
     }

@@ -30,9 +30,8 @@ package cloud.orbit.actors.cluster;
 
 import cloud.orbit.actors.cluster.pipeline.RedisBasicPipeline;
 import cloud.orbit.actors.cluster.pipeline.RedisPipelineStep;
-import cloud.orbit.exception.UncheckedException;
+import cloud.orbit.actors.extensions.ActorClassFinder;
 
-import java.net.URI;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -44,6 +43,7 @@ import java.util.concurrent.ForkJoinPool;
  */
 public class RedisClusterConfig
 {
+    private ActorClassFinder actorClassFinder = null;
     private List<String> actorDirectoryUris = Arrays.asList("redis://localhost:6379");
     private List<String> nodeDirectoryUris = Arrays.asList("redis://localhost:6379");
     private List<String> messagingUris = Arrays.asList("redis://localhost:6379");
@@ -72,6 +72,21 @@ public class RedisClusterConfig
     private Integer redisPipelineFlushCommandCount = 16;
     private Boolean useElasticache = false;
     private Boolean useCluster = false;
+
+    private int minNodesInCluster = 1;
+    private long foreignNodeDeathTimeoutMillis = 20_000;
+    private long localNodeDeathTimeoutMillis = 10_000;
+    private long deadNodeCullingDelayMillis = 24 * 60 * 60 * 1_000; // 24 hours
+
+    public ActorClassFinder getActorClassFinder()
+    {
+        return actorClassFinder;
+    }
+
+    public void setActorClassFinder(final ActorClassFinder actorClassFinder)
+    {
+        this.actorClassFinder = actorClassFinder;
+    }
 
     public List<String> getActorDirectoryUris()
     {
@@ -357,4 +372,43 @@ public class RedisClusterConfig
         return this.useCluster;
     }
 
+    public int getMinNodesInCluster()
+    {
+        return minNodesInCluster;
+    }
+
+    public void setMinNodesInCluster(final int minNodesInCluster)
+    {
+        this.minNodesInCluster = minNodesInCluster;
+    }
+
+    public long getForeignNodeDeathTimeoutMillis()
+    {
+        return foreignNodeDeathTimeoutMillis;
+    }
+
+    public void setForeignNodeDeathTimeoutMillis(final long foreignNodeDeathTimeoutMillis)
+    {
+        this.foreignNodeDeathTimeoutMillis = foreignNodeDeathTimeoutMillis;
+    }
+
+    public long getLocalNodeDeathTimeoutMillis()
+    {
+        return localNodeDeathTimeoutMillis;
+    }
+
+    public void setLocalNodeDeathTimeoutMillis(final long localNodeDeathTimeoutMillis)
+    {
+        this.localNodeDeathTimeoutMillis = localNodeDeathTimeoutMillis;
+    }
+
+    public long getDeadNodeCullingDelayMillis()
+    {
+        return deadNodeCullingDelayMillis;
+    }
+
+    public void setDeadNodeCullingDelayMillis(final long deadNodeCullingDelayMillis)
+    {
+        this.deadNodeCullingDelayMillis = deadNodeCullingDelayMillis;
+    }
 }
