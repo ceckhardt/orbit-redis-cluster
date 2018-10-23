@@ -29,6 +29,7 @@
 package cloud.orbit.actors.cluster;
 
 import cloud.orbit.actors.cluster.pipeline.RedisPipelineStep;
+import cloud.orbit.actors.extensions.ActorClassFinder;
 
 import java.util.Arrays;
 import java.util.List;
@@ -45,6 +46,10 @@ public class RedisClusterBuilder
         redisClusterConfig = new RedisClusterConfig();
     }
 
+    public RedisClusterBuilder actorClassFinder(final ActorClassFinder actorClassFinder) {
+        redisClusterConfig.setActorClassFinder(actorClassFinder);
+        return this;
+    }
 
     public RedisClusterBuilder nodeDirectoryUri(final String nodeDirectoryUri) {
         redisClusterConfig.setNodeDirectoryUris(Arrays.asList(nodeDirectoryUri));
@@ -208,6 +213,29 @@ public class RedisClusterBuilder
         redisClusterConfig.setUseClusterForDirectoryNodes(useClustering);
         return this;
     }
+
+    public RedisClusterBuilder minNodesInCluster(final Integer minNodesInCluster) {
+        redisClusterConfig.setMinNodesInCluster(minNodesInCluster);
+        return this;
+    }
+
+    public RedisClusterBuilder foreignNodeDeathTimeoutMillis(final int foreignNodeDeathTimeoutMillis) {
+        redisClusterConfig.setForeignNodeDeathTimeoutMillis(foreignNodeDeathTimeoutMillis);
+        return this;
+    }
+
+    /** Note: valid configurations require that localNodeDeathTimeoutMillis << foreignNodeDeathTimeoutMillis, to avoid
+     * scenarios where a node believes that another node has died before that other node figures it out for itself. */
+    public RedisClusterBuilder localNodeDeathTimeoutMillis(final int localNodeDeathTimeoutMillis) {
+        redisClusterConfig.setLocalNodeDeathTimeoutMillis(localNodeDeathTimeoutMillis);
+        return this;
+    }
+
+    public RedisClusterBuilder deadNodeCullingDelayMillis(final long deadNodeCullingDelayMillis) {
+        redisClusterConfig.setDeadNodeCullingDelayMillis(deadNodeCullingDelayMillis);
+        return this;
+    }
+
     public RedisClusterPeer build() {
         return new RedisClusterPeer(redisClusterConfig);
     }
