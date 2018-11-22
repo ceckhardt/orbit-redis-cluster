@@ -132,7 +132,7 @@ public class RedisConnectionManager
     }
 
     public List<LettucePubSubClient> getActiveMessagingClients() {
-        return messagingClients.stream().filter((e) -> e.isConnected()).collect(toList());
+        return messagingClients.stream().filter(LettucePubSubClient::isConnected).collect(toList());
     }
 
     public LettuceClient<String, Object> getShardedNodeDirectoryClient(final String shardId)
@@ -182,20 +182,40 @@ public class RedisConnectionManager
     public void sendMessageToChannel(final String channelId, final Object msg)
     {
         final List<LettucePubSubClient> localMessagingClients = getActiveMessagingClients();
+        sendMessageToChannel(channelId, msg, localMessagingClients, 1);
+    }
+
+    private void sendMessageToChannel(final String channelId, final Object msg, final List<LettucePubSubClient> localMessagingClients, final int attempt)
+    {
         final int activeClientCount = localMessagingClients.size();
-        if(activeClientCount > 0)
+        if (activeClientCount == 0)
         {
-            final int randomId = ThreadLocalRandom.current().nextInt(activeClientCount);
-            localMessagingClients.get(randomId).publish(channelId, msg).exceptionally((e) ->
-            {
-                logger.error("Error sending message", e);
-                return null;
-            });
+            logger.error("Failed to send message to channel '{}', no redis messaging instances were available after {} attempts.", channelId, attempt);
+            return;
         }
-        else
-        {
-            throw new UncheckedException("No Redis messaging instances available.");
-        }
+
+        final int randomIndex = ThreadLocalRandom.current().nextInt(activeClientCount);
+        final LettucePubSubClient client = localMessagingClients.remove(randomIndex);
+
+        client.publish(channelId, msg)
+                .whenComplete((numClientsReceived, exception) -> {
+                    if (exception != null)
+                    {
+                        logger.error("Failed to send message to channel '{}'", channelId, exception);
+                    }
+                    else if (numClientsReceived == 0)
+                    {
+                        if (attempt >= redisClusterConfig.getMessageSendAttempts())
+                        {
+                            logger.error("Failed to send message to channel '{}' after {} attempts.", channelId, attempt);
+                        }
+                        else
+                        {
+                            logger.warn("Failed to send message to channel '{}' on attempt {}. Retrying...", channelId, attempt);
+                            sendMessageToChannel(channelId, msg, localMessagingClients, attempt + 1);
+                        }
+                    }
+                });
     }
 
     public void shutdownConnections()
