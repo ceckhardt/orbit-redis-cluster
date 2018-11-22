@@ -66,6 +66,7 @@ public class RedisClusterTracker
     private final Set<String> hostableInterfaces;
 
     private String nodeName; // human-friendly node name supplied by the application layer via config, such as "hostname:port"
+    private String placementGroup; // application-defined key used to select which nodes may activate new actors
     private volatile NodeType nodeType; // note: only valid transition for this field is CLIENT -> HOST.
     private volatile NodeState nodeState; // note: valid transitions are RUNNING -> STOPPING -> STOPPED and RUNNING -> PRESUMED_DEAD
 
@@ -76,7 +77,10 @@ public class RedisClusterTracker
     private final ConcurrentMap<NodeAddress, RedisClusterNodeTracker> nodeTrackers = new ConcurrentHashMap<>();
 
 
-    public RedisClusterTracker(final RedisClusterConfig config, final NodeAddress localAddress, final Set<String> hostableInterfaces)
+    public RedisClusterTracker(
+            final RedisClusterConfig config,
+            final NodeAddress localAddress,
+            final Set<String> hostableInterfaces)
     {
         this.config = config;
         this.localAddress = localAddress;
@@ -96,6 +100,7 @@ public class RedisClusterTracker
                 this.nodeType,
                 this.nodeState,
                 this.sequenceNumber,
+                this.placementGroup,
                 this.hostableInterfaces,
                 snapshotNodeViews
         );
@@ -240,6 +245,16 @@ public class RedisClusterTracker
     public void setNodeName(final String nodeName)
     {
         this.nodeName = nodeName;
+    }
+
+    public String getPlacementGroup()
+    {
+        return placementGroup;
+    }
+
+    public void setPlacementGroup(final String placementGroup)
+    {
+        this.placementGroup = placementGroup;
     }
 
     public NodeType getNodeType()

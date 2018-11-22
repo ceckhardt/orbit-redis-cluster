@@ -75,7 +75,7 @@ public class RedisClusterPeer implements ClusterPeer
     private RedisConnectionManager redisConnectionManager;
 
     private final ConcurrentMap<String, ConcurrentMap<?, ?>> cacheManager = new ConcurrentHashMap<>();
-
+    private final Object heartbeatLock = new Object();
     private final RedisClusterTracker clusterTracker;
 
     private volatile ClusterView latestClusterView;
@@ -119,10 +119,11 @@ public class RedisClusterPeer implements ClusterPeer
     }
 
     @Override
-    public Task<?> join(final String clusterName, final String nodeName, final NodeType nodeType)
+    public Task<?> join(final String clusterName, final String nodeName, final NodeType nodeType, final String placementGroup)
     {
         logger.info("Joining Redis Cluster '{}' as node '{}' [{}]...", clusterName, nodeName, localAddress.asUUID().toString());
         this.clusterTracker.setNodeName(nodeName);
+        this.clusterTracker.setPlacementGroup(placementGroup);
 
         this.clusterName = clusterName;
         this.redisConnectionManager = new RedisConnectionManager(config);
@@ -171,7 +172,7 @@ public class RedisClusterPeer implements ClusterPeer
         }
 
         // Subscribe to Orbit Messaging Pub Sub
-         logger.info("Subscribing to messages...");
+        logger.info("Subscribing to messages...");
         final String nodeKey = RedisKeyGenerator.nodeKey(clusterName, localAddress.toString());
         RedisPubSubListener<String, Object> listener = new RedisPubSubAdapter<String, Object>()
         {
@@ -215,7 +216,11 @@ public class RedisClusterPeer implements ClusterPeer
 
     private void publishHeartBeat() {
         final String clusterChannelKey = getClusterChannelKey(clusterName);
-        final RedisClusterHeartBeat heartBeat = clusterTracker.createHeartBeat();
+        final RedisClusterHeartBeat heartBeat;
+        synchronized (heartbeatLock)
+        {
+            heartBeat = clusterTracker.createHeartBeat();
+        }
         redisConnectionManager.sendMessageToChannel(clusterChannelKey, heartBeat);
     }
 
@@ -236,10 +241,14 @@ public class RedisClusterPeer implements ClusterPeer
         // Apply the new HeartBeat message to our internal state.
         boolean clusterViewChanged = clusterTracker.receiveHeartBeat(heartBeat);
 
-        if ( clusterTracker.isLocalNodeInCluster() ) {
-            if ( clusterViewChanged )
+        if ( clusterViewChanged )
+        {
+            synchronized (heartbeatLock)
             {
-                pushNewClusterView();
+                if (clusterTracker.isLocalNodeInCluster())
+                {
+                    pushNewClusterView();
+                }
             }
         }
     }
