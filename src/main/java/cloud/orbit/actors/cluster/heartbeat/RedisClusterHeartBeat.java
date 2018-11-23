@@ -52,6 +52,8 @@ public class RedisClusterHeartBeat implements Serializable
     private final NodeState nodeState;
 
     private final int sequenceNumber;
+
+    private final String placementGroup;
     private final Set<String> hostableInterfaces;
 
     private final Map<NodeAddress, RedisClusterNodeView> nodeViews;
@@ -62,6 +64,7 @@ public class RedisClusterHeartBeat implements Serializable
             final NodeType nodeType,
             final NodeState nodeState,
             final int sequenceNumber,
+            final String placementGroup,
             final Set<String> hostableInterfaces,
             final Map<NodeAddress, RedisClusterNodeView> nodeViews)
     {
@@ -72,7 +75,10 @@ public class RedisClusterHeartBeat implements Serializable
         this.nodeState = nodeState;
 
         this.sequenceNumber = sequenceNumber;
+
+        this.placementGroup = placementGroup;
         this.hostableInterfaces = hostableInterfaces;
+
         this.nodeViews = nodeViews;
     }
 
@@ -99,6 +105,11 @@ public class RedisClusterHeartBeat implements Serializable
     public int getSequenceNumber()
     {
         return sequenceNumber;
+    }
+
+    public String getPlacementGroup()
+    {
+        return placementGroup;
     }
 
     public Set<String> getHostableInterfaces()

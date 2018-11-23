@@ -50,6 +50,7 @@ public class RedisClusterNodeTracker
     private String nodeName;
     private NodeType nodeType;
     private NodeState nodeState;
+    private String placementGroup;
     private Set<String> hostableActorInterfaces;
 
 
@@ -90,11 +91,13 @@ public class RedisClusterNodeTracker
         // changes its advertised set of hostable actors. The cluster view is not sensitive to other node's cluster views.
         final boolean isViewUpdated = ! Objects.equals(this.nodeType, heartBeat.getNodeType())
                 || ! Objects.equals(this.nodeState, heartBeat.getNodeState())
+                || ! Objects.equals(this.placementGroup, heartBeat.getPlacementGroup())
                 || ! Objects.equals(this.hostableActorInterfaces, heartBeat.getHostableInterfaces());
 
         this.nodeName = heartBeat.getNodeName();
         this.nodeType = heartBeat.getNodeType();
         this.nodeState = heartBeat.getNodeState();
+        this.placementGroup = heartBeat.getPlacementGroup();
         this.hostableActorInterfaces = heartBeat.getHostableInterfaces();
         this.nodeViews = heartBeat.getNodeViews();
 
@@ -121,6 +124,7 @@ public class RedisClusterNodeTracker
                 this.nodeName,
                 this.nodeType,
                 this.nodeState,
+                this.placementGroup,
                 this.hostableActorInterfaces
         );
     }

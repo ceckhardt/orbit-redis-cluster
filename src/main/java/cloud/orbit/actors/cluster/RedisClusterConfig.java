@@ -58,6 +58,7 @@ public class RedisClusterConfig
     private Integer retryAttempts = 5;
     private Integer retryInterval = 1000;
     private Integer failedAttempts = Integer.MAX_VALUE;
+    private Integer messageSendAttempts = 1;
     private Boolean dnsMonitoring = true;
     private Integer dnsMonitoringInverval = 10000;
     private Integer messagingHealthcheckInterval = 10000;
@@ -410,5 +411,15 @@ public class RedisClusterConfig
     public void setDeadNodeCullingDelayMillis(final long deadNodeCullingDelayMillis)
     {
         this.deadNodeCullingDelayMillis = deadNodeCullingDelayMillis;
+    }
+
+    public Integer getMessageSendAttempts()
+    {
+        return messageSendAttempts;
+    }
+
+    public void setMessageSendAttempts(Integer messageSendAttempts)
+    {
+        this.messageSendAttempts = messageSendAttempts;
     }
 }
