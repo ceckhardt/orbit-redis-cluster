@@ -285,8 +285,7 @@ public class RedisClusterPeer implements ClusterPeer
         // If this node isn't hearing its own heartbeats, then it must be a zombie and must die immediately.
         final boolean thisNodeIsDead = clusterTracker.isThisNodeDead();
         if ( thisNodeIsDead ) {
-            logger.error("FATAL: Node {} detected itself as dead. Exiting to restart.", localAddress);
-            System.exit(-1);
+            clusterTracker.handleLostConnection();
         }
 
         // If we're alive, we can eventually forget about some long-dead nodes.
@@ -326,6 +325,10 @@ public class RedisClusterPeer implements ClusterPeer
         // Note: since changeLocalNodeState is only used for RUNNING -> STOPPING and STOPPING -> STOPPED changes, we
         // don't wait for other nodes to agree here; we just wait to make sure that we've either (a) sent an updated
         // heartbeat correctly, or (b) we have died and can just give up.
+        if(!this.clusterTracker.isNodeRunningOrStopping() || this.clusterTracker.hasLostConnection())
+        {
+            return;
+        }
         this.clusterTracker.setNodeState(newNodeState);
         do
         {
