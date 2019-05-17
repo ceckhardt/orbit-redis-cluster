@@ -48,6 +48,7 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 import static java.util.Collections.emptySet;
@@ -69,6 +70,7 @@ public class RedisClusterTracker
     private String placementGroup; // application-defined key used to select which nodes may activate new actors
     private volatile NodeType nodeType; // note: only valid transition for this field is CLIENT -> HOST.
     private volatile NodeState nodeState; // note: valid transitions are RUNNING -> STOPPING -> STOPPED and RUNNING -> PRESUMED_DEAD
+    private AtomicBoolean hasLostConnection = new AtomicBoolean(false); //note: should Redis suddenly fall over, we need to terminate our application.
 
     private volatile int sequenceNumber = 0;
 
@@ -159,6 +161,29 @@ public class RedisClusterTracker
     public boolean isThisNodeDead()
     {
         return isThisNodeInState(NodeState.PRESUMED_DEAD);
+    }
+
+    public boolean isNodeRunningOrStopping()
+    {
+        final NodeState nodeState = this.getNodeState();
+        return nodeState == NodeState.RUNNING || nodeState == NodeState.STOPPING;
+    }
+
+    public boolean hasLostConnection()
+    {
+        return hasLostConnection.get();
+    }
+
+    /**
+     * Attempts to forcefully shutdown the JVM,
+     * as there is no graceful way to handle a lost
+     * connection to Redis.
+     */
+    public void handleLostConnection()
+    {
+        logger.error("FATAL: Node {} detected itself as dead. Exiting to restart.", localAddress);
+        hasLostConnection.compareAndSet(false, true);
+        System.exit(-1);
     }
 
     public boolean isThisNodeInState(final NodeState nodeState)
